@@ -4,5 +4,3 @@ imports:
   - location: $DRP_PIPE_DIR/pipelines/LATISS/DRP.yaml
     include:
       - isr
-      - characterizeImage
-      - calibrate
