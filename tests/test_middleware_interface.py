@@ -724,14 +724,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        raw_collection = f"{instname}/raw/all"
         date = datetime.datetime.now(datetime.timezone.utc)
         export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                             "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
-            1)
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 1)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
@@ -754,17 +749,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        raw_collection = f"{instname}/raw/all"
         date = datetime.datetime.now(datetime.timezone.utc)
         export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                             "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 2)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
-            1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.second_data_id),
-            1)
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),

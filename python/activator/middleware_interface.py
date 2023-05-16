@@ -754,7 +754,7 @@ class MiddlewareInterface:
                   f"detector {self.visit.detector} of {exposure_ids}.")
 
     def export_outputs(self, exposure_ids: set[int]) -> None:
-        """Copy raws and pipeline outputs from processing a set of images back
+        """Copy pipeline outputs from processing a set of images back
         to the central Butler.
 
         Parameters
@@ -762,11 +762,6 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        # TODO: this method will not be responsible for raws after DM-36051.
-        self._export_subset(exposure_ids, "raw",
-                            in_collections=self.instrument.makeDefaultRawIngestRunName(),
-                            )
-
         self._export_subset(exposure_ids,
                             # TODO: find a way to merge datasets like *_config
                             # or *_schema that are duplicated across multiple
