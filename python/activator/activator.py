@@ -273,7 +273,7 @@ def next_visit_handler() -> Tuple[str, int]:
         start = time.time()
         while len(expid_set) < expected_snaps:
             # 2 for JSON and FITS files
-            response = consumer.consume(num_messages=2, timeout=timeout)
+            response = consumer.consume(num_messages=1, timeout=timeout)
             end = time.time()
             messages = _filter_messages(response)
             if len(messages) == 0:
