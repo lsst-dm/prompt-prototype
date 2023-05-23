@@ -84,6 +84,7 @@ app = Flask(__name__)
 consumer = kafka.Consumer({
     "bootstrap.servers": kafka_cluster,
     "group.id": kafka_group_id,
+    "auto.offset.reset": "largest",  # default, but make explicit
 })
 
 storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
