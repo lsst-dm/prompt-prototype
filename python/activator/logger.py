@@ -27,7 +27,7 @@ from contextlib import contextmanager
 import json
 import logging
 import os
-import threading
+import types
 
 import lsst.daf.butler as daf_butler
 
@@ -277,7 +277,9 @@ class RecordFactoryContextAdapter:
         self._old_factory = factory
         # Record factories must be shared to be useful; keep all nontrivial
         # state in a `local` object to emulate a thread-specific factory.
-        self._store = threading.local()
+        # But using threading.local seemed to cause error in some threads.
+        # TODO: fix this properly
+        self._store = types.SimpleNamespace()
         self._store.context = {}
 
     def __call__(self, *args, **kwargs):
