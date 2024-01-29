@@ -6,3 +6,6 @@ description: Alert Production pipeline specialized for LATISS
 # release schedule.
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
+# temporary override before changes appear in ap_pipe release
+parameters:
+  coaddName: goodSeeing

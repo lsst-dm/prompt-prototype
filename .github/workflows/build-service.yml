@@ -27,7 +27,7 @@ env:
   # relatively stable Pipelines containers that are needed to avoid issues with
   # the "latest" version; they would remain in this list until "latest" becomes
   # usable for all building and testing.
-  BASE_TAG_LIST: '["latest"]'
+  BASE_TAG_LIST: '["d_2024_01_22"]'
 
 jobs:
   matrix-gen:
