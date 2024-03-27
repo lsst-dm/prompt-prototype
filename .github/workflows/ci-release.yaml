@@ -23,7 +23,7 @@ name: Release CI
 env:
   IMAGE_NAME: lsst-dm/prompt-service
   # Base image and tag to run tests against. NOT used in the container build.
-  BASE_TAG: "latest"
+  BASE_TAG: "d_latest"
   BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
 
 jobs:
