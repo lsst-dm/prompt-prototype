@@ -29,7 +29,7 @@ env:
   # relatively stable Pipelines containers that are needed to avoid issues with
   # the "latest" version; they would remain in this list until "latest" becomes
   # usable for all building and testing.
-  BASE_TAG_LIST: '["latest"]'
+  BASE_TAG_LIST: '["gha-d_2024_06_22"]'
 
 jobs:
   matrix-gen:
@@ -85,6 +85,7 @@ jobs:
     env:
       IMAGE_NAME: prompt-service
       BASE_TAG: ${{ matrix.baseTag }}
+      EUPS_TAG: d_2024_06_22
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,10 +95,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Determine eups tag
-        run: |
-          docker run ghcr.io/${{ github.repository_owner }}/prompt-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
-          echo "Eups tag = $(< eups.tag)"
       - name: Build image
         run: |
           docker build . -f Dockerfile \
@@ -105,7 +102,7 @@ jobs:
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
             --label "basetag=${BASE_TAG}" \
-            --label "eupstag=$(< eups.tag)"
+            --label "eupstag=${EUPS_TAG}"
       - name: Push image to container registries
         run: |
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -121,7 +118,6 @@ jobs:
             echo VERSION=$VERSION
             docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
             docker push $IMAGE_ID:$VERSION
-            EUPS_TAG=$(< eups.tag)
             if [ "$BASE_TAG" != "$EUPS_TAG" ]; then
               if [ "$BRANCH" == "main" ]; then
                 VERSION="$EUPS_TAG"
