@@ -43,22 +43,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Determine base image eups tag
-        working-directory: base
-        run: |
-          if [[ -n "$STACK_TAG" ]]; then
-            if [[ "$STACK_TAG" == "*_latest" ]]; then
-              echo "$STACK_TAG" > lsst.docker.tag
-            else
-              echo "7-stack-lsst_distrib-$STACK_TAG" > lsst.docker.tag
-            fi
-            echo "$STACK_TAG" > stack.tag
-          else
-            echo "d_latest" > lsst.docker.tag
-            echo "d_latest" > stack.tag
-          fi
-          docker run ghcr.io/lsst/quick-stack:d_2024_06_21_DM-44996-8.0.0  bash -c "echo d_2024_06_21" > eups.tag
-          echo "Eups tag = $(< eups.tag)"
       - name: Build image
         # Context-free build
         working-directory: base
@@ -67,8 +51,8 @@ jobs:
             --build-arg "STACK_TAG=$(< lsst.docker.tag)" \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
-            --label "stacktag=$(< stack.tag)" \
-            --label "eupstag=$(< eups.tag)" \
+            --label "stacktag=${STACK_TAG}" \
+            --label "eupstag=${STACK_TAG}" \
             < Dockerfile
       - name: Push image to registries
         working-directory: base
@@ -80,7 +64,6 @@ jobs:
 
           for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME"; do
 
-            STACK_TAG="$(< stack.tag)"
             if [ "$BRANCH" == "main" ]; then
               VERSION="$STACK_TAG"
             else
@@ -91,7 +74,7 @@ jobs:
             docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
             docker push $IMAGE_ID:$VERSION
 
-            EUPS_TAG=$(< eups.tag)
+            EUPS_TAG=$STACK_TAG
             if [ "$STACK_TAG" != "$EUPS_TAG" ]; then
               # Also push actual eups tag if not the same (e.g. d_latest)
               if [ "$BRANCH" == "main" ]; then
