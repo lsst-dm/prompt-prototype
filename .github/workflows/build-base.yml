@@ -57,7 +57,7 @@ jobs:
             echo "d_latest" > lsst.docker.tag
             echo "d_latest" > stack.tag
           fi
-          docker run ghcr.io/lsst/quick-stack:d_2024_06_21_DM-44996-8.0.0  bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
+          docker run ghcr.io/lsst/quick-stack:d_2024_06_21_DM-44996-8.0.0  bash -c "echo d_2024_06_21" > eups.tag
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         # Context-free build

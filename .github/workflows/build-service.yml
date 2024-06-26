@@ -85,7 +85,7 @@ jobs:
     env:
       IMAGE_NAME: prompt-service
       BASE_TAG: ${{ matrix.baseTag }}
-      EUPS_TAG: d_2024_06_22
+      EUPS_TAG: d_2024_06_21
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
