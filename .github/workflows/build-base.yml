@@ -105,12 +105,8 @@ jobs:
             fi
             if [ "$MAKE_LATEST" == "true" ]; then
               # Push latest if requested
-              if [ "$BRANCH" == "main" ]; then
-                VERSION="latest"
-              else
-                VERSION="${BRANCH}-latest"
-              fi
-              echo VERSION=$VERSION
+              VERSION="latest"
+              echo "VERSION=${VERSION} from BRANCH=${BRANCH}"
               docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
               docker push $IMAGE_ID:$VERSION
             fi
