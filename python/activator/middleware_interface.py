@@ -971,18 +971,18 @@ class MiddlewareInterface:
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
+    def _get_all_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
         Returns
         -------
-        pipeline : sequence [`str`]
-            A sequence of paths a configured pipeline file. The order
-            is undefined.
+        pipelines : collection [`str`]
+            The paths to a configured pipeline file. The order is undefined.
         """
-        all = list(self._get_pre_pipeline_files())
-        all.extend(self._get_main_pipeline_files())
+        # A pipeline appearing in both configs is unlikely, but not impossible.
+        all = set(self._get_pre_pipeline_files())
+        all.update(self._get_main_pipeline_files())
         return all
 
     def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
