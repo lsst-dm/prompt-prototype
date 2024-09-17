@@ -909,8 +909,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/NoPipeline/{self.deploy_id}")
         out_run = self.interface._get_output_run(filename, date)
         self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
-        init_run = self.interface._get_init_output_run(filename, date)
-        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
 
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()

@@ -1052,28 +1052,6 @@ class MiddlewareInterface:
         """
         return self._get_output_run("NoPipeline", date)
 
-    def _get_init_output_run(self,
-                             pipeline_file: str,
-                             date: str) -> str:
-        """Generate a deterministic init-output collection name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        pipeline_file : `str`
-            The pipeline file that the run will be used for.
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place pipeline init-outputs.
-        """
-        # Current executor requires that init-outputs be in the same run as
-        # outputs. This can be changed once DM-36162 is done.
-        return self._get_output_run(pipeline_file, date)
-
     def _get_output_run(self,
                         pipeline_file: str,
                         date: str) -> str:
@@ -1104,9 +1082,6 @@ class MiddlewareInterface:
             self._get_preload_run(self._day_obs),
             CollectionType.RUN)
         for pipeline_file in self._get_all_pipeline_files():
-            self.butler.registry.registerCollection(
-                self._get_init_output_run(pipeline_file, self._day_obs),
-                CollectionType.RUN)
             self.butler.registry.registerCollection(
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
@@ -1276,9 +1251,8 @@ class MiddlewareInterface:
 
         Returns
         -------
-        init_output_run, output_run : `str`
-            The runs to which the successful pipeline wrote its init-outputs
-            and outputs, respectively.
+        output_run : `str`
+            The run to which the successful pipeline wrote its outputs.
 
         Raises
         ------
@@ -1297,10 +1271,9 @@ class MiddlewareInterface:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
                 raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
-            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
             output_run = self._get_output_run(pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run]
+                                 collections=[output_run]
                                  + in_collections
                                  + list(self.butler.collections.defaults),
                                  run=output_run)
@@ -1343,7 +1316,7 @@ class MiddlewareInterface:
                         graph_executor=self._get_graph_executor(exec_butler, factory)
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
-                    return init_output_run, output_run
+                    return output_run
             except Exception as e:
                 raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
             finally:
@@ -1467,12 +1440,11 @@ class MiddlewareInterface:
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
         )
         preload_run = self._get_preload_run(self._day_obs)
-        init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
         pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
 
         try:
             self._try_pipelines(self._get_main_pipeline_files(),
-                                in_collections=pre_runs + init_pre_runs + [preload_run],
+                                in_collections=pre_runs + [preload_run],
                                 data_ids=where,
                                 label="main",
                                 )
@@ -1519,9 +1491,7 @@ class MiddlewareInterface:
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [self._get_preload_run(self._day_obs)]
         for f in self._get_all_pipeline_files():
-            output_runs.extend([self._get_init_output_run(f, self._day_obs),
-                                self._get_output_run(f, self._day_obs),
-                                ])
+            output_runs.append(self._get_output_run(f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
                 exports = self._export_subset(exposure_ids,
