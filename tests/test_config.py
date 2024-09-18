@@ -65,6 +65,11 @@ class PipelinesConfigTest(unittest.TestCase):
             config.get_pipeline_files(self.visit),
             [os.path.normpath(os.path.join(TESTDIR, "..", "pipelines", "NotACam", "ApPipe.yaml"))]
         )
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.normpath(os.path.join(TESTDIR, "..", "pipelines", "NotACam", "ApPipe.yaml")),
+             }
+        )
 
     def test_selection(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
@@ -87,6 +92,13 @@ class PipelinesConfigTest(unittest.TestCase):
             config.get_pipeline_files(dataclasses.replace(self.visit, survey="")),
             [os.path.abspath("Default.yaml")]
         )
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
+             os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml")),
+             os.path.abspath("Default.yaml"),
+             }
+        )
 
     def test_fallback(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
@@ -97,6 +109,30 @@ class PipelinesConfigTest(unittest.TestCase):
             config.get_pipeline_files(self.visit),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
              os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
+        )
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
+             os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml")),
+             }
+        )
+
+    def test_shared_pipelines(self):
+        config = PipelinesConfig([{"survey": "TestSurvey", "pipelines": ["/etc/pipelines/SingleFrame.yaml"]},
+                                  {"survey": "CameraTest", "pipelines": ["/etc/pipelines/SingleFrame.yaml"]},
+                                  ])
+        self.assertEqual(
+            config.get_pipeline_files(self.visit),
+            [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )
+        self.assertEqual(
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+            [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
+             }
         )
 
     def test_none(self):
@@ -113,6 +149,11 @@ class PipelinesConfigTest(unittest.TestCase):
                          [])
         self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
                          [])
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.abspath(os.path.join("None shall pass", "pipelines", "SingleFrame.yaml")),
+             }
+        )
 
     def test_nomatch(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
@@ -124,6 +165,12 @@ class PipelinesConfigTest(unittest.TestCase):
                                   ])
         with self.assertRaises(RuntimeError):
             config.get_pipeline_files(dataclasses.replace(self.visit, survey="Surprise"))
+        self.assertEqual(
+            set(config.get_all_pipeline_files()),
+            {os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
+             os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml")),
+             }
+        )
 
     def test_empty(self):
         with self.assertRaises(ValueError):

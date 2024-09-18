@@ -385,6 +385,21 @@ class PipelinesConfig:
                 return node.pipeline_files
         raise RuntimeError(f"No pipelines config matches {visit}")
 
+    def get_all_pipeline_files(self) -> collections.abc.Collection[str]:
+        """Return all pipelines in this configuration.
+
+        Returns
+        -------
+        pipelines : collection [`str`]
+            Path(s) to the configured pipeline file(s). Unlike
+            `get_pipeline_files`, the pipelines are not returned in any
+            particular order.
+        """
+        pipelines = set()
+        for node in self._specs:
+            pipelines.update(os.path.expandvars(path) for path in node.pipeline_files)
+        return pipelines
+
 
 class _LinearRange:
     """A [min, max] range on the number line.
