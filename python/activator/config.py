@@ -370,9 +370,10 @@ class PipelinesConfig:
 
         Returns
         -------
-        pipeline : `list` [`str`]
-            Path(s) to the configured pipeline file(s). An empty list means
-            that *no* pipeline should be run on this visit.
+        pipelines : `list` [`str`]
+            Path(s) to the configured pipeline file(s), in decreasing priority
+            order. An empty list means that *no* pipeline should be run on
+            this visit.
 
         Raises
         ------
