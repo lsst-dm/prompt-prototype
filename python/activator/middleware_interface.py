@@ -52,6 +52,7 @@ import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
 from shared.config import PipelinesConfig
+import shared.run_utils as runs
 from shared.visit import FannedOutVisit
 from .caching import DatasetCache
 from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError, \
@@ -619,7 +620,7 @@ class MiddlewareInterface:
         ))
         self.butler.put(bundle,
                         "promptPreload_metrics",
-                        run=self._get_preload_run(self._day_obs),
+                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
                         group=self.visit.groupId)
@@ -1012,78 +1013,21 @@ class MiddlewareInterface:
         ))
         self.butler.put(lsst.pipe.base.utils.RegionTimeInfo(region=region, timespan=timespan),
                         "regionTimeInfo",
-                        run=self._get_preload_run(self._day_obs),
+                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
                         group=self.visit.groupId)
-
-    def _get_output_chain(self,
-                          date: str) -> str:
-        """Generate a deterministic output chain name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        chain : `str`
-            The chain in which to place all output collections.
-        """
-        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return self.instrument.makeCollectionName("prompt", f"output-{date}")
-
-    def _get_preload_run(self,
-                         date: str) -> str:
-        """Generate a deterministic preload collection name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place preload/pre-execution products.
-        """
-        return self._get_output_run("NoPipeline", date)
-
-    def _get_output_run(self,
-                        pipeline_file: str,
-                        date: str) -> str:
-        """Generate a deterministic collection name that avoids version or
-        provenance conflicts.
-
-        Parameters
-        ----------
-        pipeline_file : `str`
-            The pipeline file that the run will be used for.
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place processing outputs.
-        """
-        pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
-        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return "/".join([self._get_output_chain(date), pipeline_name, self._deployment])
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
         self.butler.registry.registerCollection(
-            self._get_preload_run(self._day_obs),
+            runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
         for pipeline_file in self._get_combined_pipeline_files():
             self.butler.registry.registerCollection(
-                self._get_output_run(pipeline_file, self._day_obs),
+                runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
     def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
@@ -1271,7 +1215,7 @@ class MiddlewareInterface:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
                 raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
                                  collections=[output_run]
                                  + in_collections
@@ -1353,7 +1297,7 @@ class MiddlewareInterface:
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector} "
             f"and group='{self.visit.groupId}'"
         )
-        preload_run = self._get_preload_run(self._day_obs)
+        preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
 
         self._try_pipelines(self._get_pre_pipeline_files(),
                             in_collections=[preload_run],
@@ -1439,8 +1383,9 @@ class MiddlewareInterface:
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
         )
-        preload_run = self._get_preload_run(self._day_obs)
-        pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
+        preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
+        pre_runs = [runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
+                    for f in self._get_pre_pipeline_files()]
 
         try:
             self._try_pipelines(self._get_main_pipeline_files(),
@@ -1489,9 +1434,9 @@ class MiddlewareInterface:
             return
 
         # Rather than determining which pipeline was run, just try to export all of them.
-        output_runs = [self._get_preload_run(self._day_obs)]
+        output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
         for f in self._get_combined_pipeline_files():
-            output_runs.append(self._get_output_run(f, self._day_obs))
+            output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
                 exports = self._export_subset(exposure_ids,
@@ -1504,7 +1449,7 @@ class MiddlewareInterface:
                 if exports:
                     populated_runs = {ref.run for ref in exports}
                     _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                    output_chain = self._get_output_chain(self._day_obs)
+                    output_chain = runs.get_output_chain(self.instrument, self._day_obs)
                     self._chain_exports(output_chain, populated_runs)
                 else:
                     _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
@@ -1762,10 +1707,11 @@ class MiddlewareInterface:
                 )
                 self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
             # Outputs are all in their own runs, so just drop them.
-            preload_run = self._get_preload_run(self._day_obs)
+            preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
             for pipeline_file in self._get_combined_pipeline_files():
-                output_run = self._get_output_run(pipeline_file, self._day_obs)
+                output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
+                                                 self._day_obs)
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets

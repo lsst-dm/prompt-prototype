@@ -57,6 +57,7 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
+from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
 
 # The short name of the instrument used in the test repo.
@@ -900,16 +901,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._prepare_run_preprocessing()
         self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
-    def test_get_output_run(self):
-        filename = "ApPipe.yaml"
-        date = "2023-01-22"
-        out_chain = self.interface._get_output_chain(date)
-        self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
-        preload_run = self.interface._get_preload_run(date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/NoPipeline/{self.deploy_id}")
-        out_run = self.interface._get_output_run(filename, date)
-        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
-
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()
         self.assertEqual(template_types, {"goodSeeingCoadd"})
@@ -954,7 +945,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Since we're not calling prep_butler, need to set up the collections by hand
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run("ApPipe.yaml", self.interface._day_obs)
+        out_collection = get_output_run(self.interface.instrument, self.interface._deployment,
+                                        "ApPipe.yaml", self.interface._day_obs)
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         calib_collection = self.interface.instrument.makeCalibrationCollectionName()
         butler.registry.registerCollection(calib_collection, CollectionType.RUN)
