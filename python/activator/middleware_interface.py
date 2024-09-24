@@ -23,8 +23,6 @@ __all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_lo
            "MiddlewareInterface"]
 
 import collections.abc
-import glob
-import hashlib
 import itertools
 import logging
 import os
@@ -325,7 +323,7 @@ class MiddlewareInterface:
 
         self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
-        self._deployment = self._get_deployment()
+        self._deployment = runs.get_deployment(self._apdb_config)
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -368,58 +366,6 @@ class MiddlewareInterface:
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
-
-    def _get_pp_hash(self):
-        """Get a unique ID for the Prompt Processing code.
-
-        Returns
-        ----------
-        hash : `hashlib.hash`
-            A hash of the contents of Prompt Processing.
-        """
-        root_dir = lsst.utils.getPackageDir("prompt_processing")
-        files = []
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "maps", "**", "*.fits"), recursive=True)))
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "pipelines", "**", "*.yaml"), recursive=True)))
-        # Source code has different paths in test environment and Docker container.
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "python", "activator", "*.py"), recursive=True)))
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "activator", "*.py"), recursive=True)))
-
-        filehash = hashlib.md5(usedforsecurity=False)
-        for file in files:
-            with open(file, "rb") as f:
-                filehash.update(f.read())  # Don't need to worry about OOM.
-        return filehash
-
-    def _get_deployment(self):
-        """Get a unique version ID of the active stack and pipeline configuration(s).
-
-        ``self._apdb_config`` must have already been initialized.
-
-        Returns
-        -------
-        version : `str`
-            A unique version identifier for the stack. Contains only
-            word characters and "-", but not guaranteed to be human-readable.
-        """
-        # To disambiguate all stack changes, read the active Science Pipelines install.
-        # getAllPythonDistributions misses non-Python Conda packages, but this should
-        # be fine since rubin-env updates many Conda packages at once.
-        packages = lsst.utils.packages.getAllPythonDistributions()
-        packagehash = hashlib.md5(usedforsecurity=False)
-        for package, version in sorted(packages.items()):
-            _log_trace3.debug("Deployment includes %s %s.", package, version)
-            packagehash.update(bytes(package + version, encoding="utf-8"))
-        packagehash.update(self._get_pp_hash().digest())
-
-        # APDB config is included in pipeline/task configs.
-        # Add other config fields as needed.
-        confighash = hashlib.md5(usedforsecurity=False)
-        confighash.update(bytes(self._apdb_config, encoding="utf-8"))
-
-        version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
-        _log.debug("Deployment identified as %s.", version)
-        return version
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
