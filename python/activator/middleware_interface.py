@@ -238,10 +238,6 @@ def _get_sasquatch_dispatcher():
     return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
 
-# Offset used to define exposures' day_obs value.
-_DAY_OBS_DELTA = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
-
-
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
     data handling system, to handle processing individual images.
@@ -342,7 +338,7 @@ class MiddlewareInterface:
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
-        self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
+        self._day_obs = runs.get_day_obs(astropy.time.Time.now())
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!

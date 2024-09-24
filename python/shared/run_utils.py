@@ -19,11 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_output_chain", "get_preload_run", "get_output_run"]
+__all__ = ["get_output_chain", "get_preload_run", "get_output_run", "get_day_obs"]
 
 
 import logging
 import os
+
+import astropy.time
 
 import lsst.obs.base
 
@@ -100,3 +102,23 @@ def get_output_run(instrument: lsst.obs.base.Instrument,
     pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
     # Order optimized for S3 bucket -- filter out as many files as soon as possible.
     return "/".join([get_output_chain(instrument, date), pipeline_name, deployment_id])
+
+
+def get_day_obs(time: astropy.time.Time) -> str:
+    """Convert a timestamp into a day-obs string.
+
+    The day-obs is defined as the TAI date of an instant 12 hours before
+    the timestamp.
+
+    Parameters
+    ----------
+    time : `astropy.time.Time`
+        The timestamp to convert.
+
+    Returns
+    -------
+    day_obs : `str`
+        The day-obs corresponding to ``time``, in YYYY-MM-DD format.
+    """
+    day_obs_delta = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
+    return (time + day_obs_delta).tai.to_value("iso", "date")
