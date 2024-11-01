@@ -1,0 +1,5 @@
+instrument: LSSTComCam
+query:
+  collections: LSSTComCam/raw/all
+  where: "day_obs=20241027 and exposure.can_see_sky AND exposure.observation_type='science'"
+repo: /repo/main
