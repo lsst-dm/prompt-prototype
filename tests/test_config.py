@@ -85,7 +85,7 @@ class PipelinesConfigTest(unittest.TestCase):
         )
         self.assertEqual(
             config.get_pipeline_files(dataclasses.replace(self.visit, survey="")),
-            ["Default.yaml"]
+            [os.path.abspath("Default.yaml")]
         )
 
     def test_fallback(self):
@@ -107,7 +107,7 @@ class PipelinesConfigTest(unittest.TestCase):
                                   ])
         self.assertEqual(
             config.get_pipeline_files(self.visit),
-            [os.path.normpath(os.path.join("None shall pass", "pipelines", "SingleFrame.yaml"))]
+            [os.path.abspath(os.path.join("None shall pass", "pipelines", "SingleFrame.yaml"))]
         )
         self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="Camera Test")),
                          [])

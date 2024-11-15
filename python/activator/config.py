@@ -132,9 +132,10 @@ class PipelinesConfig:
             elif isinstance(config, str):  # Strings are sequences!
                 raise ValueError(f"Pipelines spec must be list or None, got {config}")
             elif isinstance(config, collections.abc.Sequence):
-                if any(not isinstance(x, str) for x in config):
-                    raise ValueError(f"Pipeline list {config} has invalid paths.")
-                return config
+                try:
+                    return [os.path.abspath(os.path.expandvars(path)) for path in config]
+                except (TypeError, OSError) as e:
+                    raise ValueError(f"Pipeline list {config} has invalid paths.") from e
             else:
                 raise ValueError(f"Pipelines spec must be list or None, got {config}")
 
@@ -201,6 +202,8 @@ class PipelinesConfig:
         @property
         def pipeline_files(self) -> collections.abc.Sequence[str]:
             """An ordered list of pipelines to run in this spec (sequence [`str`]).
+
+            All filenames are expanded and normalized.
             """
             return self._filenames
 
@@ -254,5 +257,5 @@ class PipelinesConfig:
         """
         for node in self._specs:
             if node.matches(visit):
-                return [os.path.expandvars(path) for path in node.pipeline_files]
+                return node.pipeline_files
         raise RuntimeError(f"Unsupported survey: {visit.survey}")
