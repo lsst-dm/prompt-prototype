@@ -100,29 +100,64 @@ class PipelinesConfig:
         def __init__(self, config: collections.abc.Mapping[str, typing.Any]):
             specs = dict(config)
             try:
-                pipelines_value = specs.pop('pipelines')
-                if pipelines_value is None or pipelines_value == "None":
-                    self._filenames = []
-                elif isinstance(pipelines_value, str):  # Strings are sequences!
-                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
-                elif isinstance(pipelines_value, collections.abc.Sequence):
-                    if any(not isinstance(x, str) for x in pipelines_value):
-                        raise ValueError(f"Pipeline list {pipelines_value} has invalid paths.")
-                    self._filenames = pipelines_value
-                else:
-                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
+                self._filenames = self._parse_pipelines(specs.pop('pipelines'))
                 self._check_pipelines(self._filenames)
 
-                survey_value = specs.pop('survey', None)
-                if isinstance(survey_value, str) or survey_value is None:
-                    self._survey = survey_value
-                else:
-                    raise ValueError(f"{survey_value} is not a valid survey name.")
+                self._survey = self._parse_survey(specs.pop('survey', None))
 
                 if specs:
                     raise ValueError(f"Got unexpected keywords: {specs.keys()}")
             except KeyError as e:
                 raise ValueError from e
+
+        @staticmethod
+        def _parse_pipelines(config: typing.Any) -> collections.abc.Sequence[str]:
+            """Convert a pipelines config snippet into internal metadata.
+
+            Parameters
+            ----------
+            config : sequence [`str`], `str`, or `None`
+                The pipelines designation in the config. Expected to be a
+                prioritized list of filenames, or ``"None"`` or `None` as
+                synonyms for an empty sequence. This method is responsible for
+                any type checking.
+
+            Returns
+            -------
+            filenames : sequence [`str`]
+                The normalized filename list.
+            """
+            if config is None or config == "None":
+                return []
+            elif isinstance(config, str):  # Strings are sequences!
+                raise ValueError(f"Pipelines spec must be list or None, got {config}")
+            elif isinstance(config, collections.abc.Sequence):
+                if any(not isinstance(x, str) for x in config):
+                    raise ValueError(f"Pipeline list {config} has invalid paths.")
+                return config
+            else:
+                raise ValueError(f"Pipelines spec must be list or None, got {config}")
+
+        @staticmethod
+        def _parse_survey(config: typing.Any) -> str | None:
+            """Convert a survey config snippet into internal metadata.
+
+            Parameters
+            ----------
+            config : `str` or `None`
+                The survey constraint in the config. Expected to be a matching
+                string, or `None` if the constraint was omitted. This method is
+                responsible for any type checking.
+
+            Returns
+            -------
+            survey : `str` or `None`
+                The validated survey constraint.
+            """
+            if isinstance(config, str) or config is None:
+                return config
+            else:
+                raise ValueError(f"{config} is not a valid survey name.")
 
         @staticmethod
         def _check_pipelines(pipelines: collections.abc.Sequence[str]):
