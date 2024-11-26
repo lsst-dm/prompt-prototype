@@ -330,22 +330,6 @@ class MiddlewareInterface:
                  skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
         self.visit = visit
-        # Usually prompt processing only cares about on-sky images and expects all of
-        # them to have equatorial coordinates and sky rotation angles. In some cases,
-        # ISR can be done but sensible results from further pipelines cannot be expected.
-        # Use self._skip_spatial_preload to indicate dubious coordinates and to skip
-        # preloading spatial datasets, but continue the processing.
-        self._skip_spatial_preload = False
-        if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
-            self._skip_spatial_preload = True
-            _log.error("Only ICRS coordinates are fully supported. "
-                       f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
-        if self.visit.rotationSystem != FannedOutVisit.RotSys.SKY:
-            self._skip_spatial_preload = True
-            _log.error("Only sky camera rotations are fully supported. "
-                       f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -495,10 +479,22 @@ class MiddlewareInterface:
         -------
         wcs : `lsst.afw.geom.SkyWcs`
             An approximate WCS for this object's visit.
+
+        Raises
+        ------
+        _NoPositionError
+            Raised if the nextVisit message does not have coordinates
+            in a supported format.
         """
-        boresight_center = lsst.geom.SpherePoint(
-            self.visit.position[0], self.visit.position[1], lsst.geom.degrees)
-        orientation = self.visit.cameraAngle * lsst.geom.degrees
+        try:
+            sky_position = self.visit.get_boresight_icrs()
+            boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
+                                                     lsst.geom.degrees)
+            orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
+        except TypeError as e:
+            raise _NoPositionError("nextVisit does not have a position.") from e
+        except RuntimeError as e:
+            raise _NoPositionError(str(e)) from e
 
         formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
         return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
@@ -510,6 +506,12 @@ class MiddlewareInterface:
         -------
         region : `lsst.sphgeom.Region`
             Region for preload.
+
+        Raises
+        ------
+        _NoPositionError
+            Raised if the nextVisit message does not have coordinates
+            in a supported format.
         """
         detector = self.camera[self.visit.detector]
         wcs = self._predict_wcs(detector)
@@ -548,13 +550,15 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                if self._skip_spatial_preload:
-                    region = None
-                else:
+                try:
                     region = self._compute_region()
                     _log.debug(
                         f"Preload region {region} including padding {self.padding.asArcseconds()} arcsec.")
                     self._write_region_time(region)  # Must be done before preprocessing pipeline
+                except _NoPositionError:
+                    _log.exception("Could not get sky position from visit %s. "
+                                   "Spatial datasets won't be loaded.", self.visit)
+                    region = None
 
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
@@ -619,10 +623,8 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
             calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
-        if self._skip_spatial_preload:
+        if region is None:
             return (calib_datasets, calib_datasets)
-        elif region is None:
-            raise RuntimeError("Cannot do spatial preload without a region.")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
             refcat_datasets = set(self._export_refcats(region))
@@ -1775,6 +1777,12 @@ class _MissingDatasetError(RuntimeError):
     where expected.
     """
     pass
+
+
+class _NoPositionError(RuntimeError):
+    """An exception flagging that the nextVisit does not have readable
+    position information.
+    """
 
 
 # TODO: refactor this function so that querying the src repo (with timestamp),
