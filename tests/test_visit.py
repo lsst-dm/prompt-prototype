@@ -23,6 +23,9 @@ import dataclasses
 import json
 import unittest
 
+import astropy.coordinates
+import astropy.units as u
+
 from activator.visit import FannedOutVisit, BareVisit
 
 
@@ -82,16 +85,18 @@ class BareVisitTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 
+        self.boresight = astropy.coordinates.SkyCoord(134.5454, -65.3261, unit=u.degree, frame="icrs")
+        self.sky_angle = astropy.coordinates.Angle(135.0, unit=u.degree)
         visit_info = dict(
             instrument="NotACam",
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
             filters="k2022",
             coordinateSystem=BareVisit.CoordSys.ICRS,
-            position=[134.5454, -65.3261],
+            position=[self.boresight.ra.degree, self.boresight.dec.degree],
             startTime=1_674_516_900.0,
             rotationSystem=BareVisit.RotSys.SKY,
-            cameraAngle=135.0,
+            cameraAngle=self.sky_angle.degree,
             survey="IMAGINARY",
             salIndex=42,
             scriptSalIndex=42,
@@ -111,3 +116,45 @@ class BareVisitTest(unittest.TestCase):
             self.fannedOutVisit.get_bare_visit(),
             dataclasses.asdict(self.visit)
         )
+
+    def test_boresight(self):
+        self.assertEqual(self.visit.get_boresight_icrs(), self.boresight)
+
+        none_visit = dataclasses.replace(self.visit, coordinateSystem=BareVisit.CoordSys.NONE)
+        self.assertIsNone(none_visit.get_boresight_icrs())
+
+        local_visit = dataclasses.replace(self.visit, coordinateSystem=BareVisit.CoordSys.OBSERVED)
+        with self.assertRaises(RuntimeError):
+            local_visit.get_boresight_icrs()
+
+        internal_visit = dataclasses.replace(self.visit, coordinateSystem=BareVisit.CoordSys.MOUNT)
+        with self.assertRaises(RuntimeError):
+            internal_visit.get_boresight_icrs()
+
+        invalid_visit = dataclasses.replace(self.visit, coordinateSystem=42)
+        with self.assertRaises(RuntimeError):
+            invalid_visit.get_boresight_icrs()
+
+    def test_boresight_ra_wrap(self):
+        negative_visit = dataclasses.replace(self.visit, position=[-23.0, 1.0])
+        boresight = negative_visit.get_boresight_icrs()
+        self.assertAlmostEqual(boresight.ra.degree, 360.0 - 23.0)
+        self.assertEqual(boresight.dec.degree, 1.0)
+
+    def test_rotation(self):
+        self.assertEqual(self.visit.get_rotation_sky(), self.sky_angle)
+
+        none_visit = dataclasses.replace(self.visit, rotationSystem=BareVisit.RotSys.NONE)
+        self.assertIsNone(none_visit.get_rotation_sky())
+
+        local_visit = dataclasses.replace(self.visit, rotationSystem=BareVisit.RotSys.HORIZON)
+        with self.assertRaises(RuntimeError):
+            local_visit.get_rotation_sky()
+
+        internal_visit = dataclasses.replace(self.visit, rotationSystem=BareVisit.RotSys.MOUNT)
+        with self.assertRaises(RuntimeError):
+            internal_visit.get_rotation_sky()
+
+        invalid_visit = dataclasses.replace(self.visit, rotationSystem=42)
+        with self.assertRaises(RuntimeError):
+            invalid_visit.get_rotation_sky()

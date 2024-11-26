@@ -24,6 +24,9 @@ __all__ = ["FannedOutVisit", "SummitVisit", "BareVisit"]
 from dataclasses import dataclass, field, asdict
 import enum
 
+import astropy.coordinates
+import astropy.units as u
+
 
 @dataclass(frozen=True, kw_only=True)
 class BareVisit:
@@ -83,6 +86,60 @@ class BareVisit:
         """
         return f"(groupId={self.groupId}, survey={self.survey}, " \
                f"salIndex={self.salIndex}, instrument={self.instrument})"
+
+    def get_boresight_icrs(self):
+        """Normalize the visit position to ICRS coordinates.
+
+        Returns
+        -------
+        icrs : `astropy.coordinates.SkyCoord` or `None`
+            The ICRS coordinates of the position, or `None` if the visit does
+            not have a position. RA is guaranteed to be normalized to
+            [0, 360) degrees.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the coordinates are in an unsupported system.
+        """
+        match self.coordinateSystem:
+            case BareVisit.CoordSys.NONE:
+                return None
+            case BareVisit.CoordSys.ICRS:
+                return astropy.coordinates.SkyCoord(*self.position, unit=u.degree, frame="icrs")
+            case BareVisit.CoordSys.OBSERVED:
+                # Doable in principle with astropy.coordinates.AltAz
+                raise RuntimeError("Alt-Az coordinates are not supported")
+            case BareVisit.CoordSys.MOUNT:
+                raise RuntimeError("Internal coordinates are not supported.")
+            case _:
+                raise RuntimeError("Unknown coordinate system %r.", self.coordinateSystem)
+
+    def get_rotation_sky(self):
+        """Normalize the visit rotation to Sky coordinates.
+
+        Returns
+        -------
+        icrs : `astropy.coordinates.Angle` or `None`
+            The orientation of focal +Y, measured east of north, or `None` if
+            the visit does not have an orientation.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the rotation is in an unsupported system.
+        """
+        match self.rotationSystem:
+            case BareVisit.RotSys.NONE:
+                return None
+            case BareVisit.RotSys.SKY:
+                return astropy.coordinates.Angle(self.cameraAngle, unit=u.degree)
+            case BareVisit.RotSys.HORIZON:
+                raise RuntimeError("Alt-Az coordinates are not supported")
+            case BareVisit.RotSys.MOUNT:
+                raise RuntimeError("Internal coordinates are not supported.")
+            case _:
+                raise RuntimeError("Unknown rotation system %r.", self.rotationSystem)
 
 
 @dataclass(frozen=True, kw_only=True)
