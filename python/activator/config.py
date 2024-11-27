@@ -25,6 +25,7 @@ __all__ = ["PipelinesConfig"]
 
 import collections
 import collections.abc
+import numbers
 import os
 import typing
 
@@ -46,6 +47,12 @@ class PipelinesConfig:
 
         ``"survey"``
             The survey that triggers the pipelines (`str`, optional).
+        ``"ra"``, ``"dec"``
+            Mappings with ``min`` and ``max`` keys giving the boresight RA or
+            dec range in degrees (mapping [`str`, `float`], optional). RA-only
+            or dec-only constraints are allowed. RA wraparound is supported.
+            Visits with no position *never* match a node with ra/dec
+            constraints.
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
             pipeline path may contain environment variables, and the list of
@@ -84,6 +91,14 @@ class PipelinesConfig:
                           "pipelines": None},
     ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
+
+    A config restricted to a box in ra, dec:
+
+    >>> PipelinesConfig([{"ra": {"min": 340.0, "max": 20.0},  # Can also give -20
+    ...                   "dec": {"min": -20.0, "max": 20.0},
+    ...                   "pipelines": ["/etc/pipelines/NearEquinox.yaml"]},
+    ...                  ])  # doctest: +ELLIPSIS
+    <config.PipelinesConfig object at 0x...>
     """
 
     class _Spec:
@@ -102,6 +117,11 @@ class PipelinesConfig:
             try:
                 self._filenames = self._parse_pipelines(specs.pop('pipelines'))
                 self._check_pipelines(self._filenames)
+
+                self._ra = self._parse_minmax(specs.pop('ra', None), _WrapRange, wrap=360.0)
+                self._dec = self._parse_minmax(specs.pop('dec', None), _LinearRange)
+
+                self._positions = self._ra is not None or self._dec is not None
 
                 self._survey = self._parse_survey(specs.pop('survey', None))
 
@@ -160,6 +180,38 @@ class PipelinesConfig:
             else:
                 raise ValueError(f"{config} is not a valid survey name.")
 
+        _RangeType = typing.TypeVar('T', bound=collections.abc.Container)
+
+        @staticmethod
+        def _parse_minmax(config: typing.Any,
+                          factory: collections.abc.Callable[..., _RangeType],
+                          **kwargs) -> _RangeType | None:
+            """Convert a numerical range into a range object.
+
+            Parameters
+            ----------
+            config : mapping [`str`, numeric] or `None`
+                A range constraint in the config. Expected to be a mapping with
+                ``"min"`` and ``"max"`` fields, or None if the constraint was
+                omitted. This method is responsible for any type checking.
+            factory : callable
+                A callable that takes ``min`` and ``max`` arguments and returns
+                a range object.
+            **kwargs
+                Additional arguments for ``factory``.
+
+            Returns
+            -------
+            range : range or `None`
+                The validated range.
+            """
+            if config is not None:
+                min = config["min"]
+                max = config["max"]
+                return factory(min=min, max=max, **kwargs)
+            else:
+                return None
+
         @staticmethod
         def _check_pipelines(pipelines: collections.abc.Sequence[str]):
             """Test the correctness of a list of pipelines.
@@ -194,9 +246,26 @@ class PipelinesConfig:
             -------
             matches : `bool`
                 `True` if the visit meets all conditions, `False` otherwise.
+
+            Raises
+            ------
+            ValueError
+                Raised if the visit has invalid or unsupported fields.
             """
             if self._survey is not None and self._survey != visit.survey:
                 return False
+            if self._positions:
+                try:
+                    visit_radec = visit.get_boresight_icrs()
+                except RuntimeError as e:
+                    raise ValueError(str(e)) from e
+                if visit_radec is None:
+                    return False
+
+                if self._ra is not None and visit_radec.ra.degree not in self._ra:
+                    return False
+                if self._dec is not None and visit_radec.dec.degree not in self._dec:
+                    return False
             return True
 
         @property
@@ -254,8 +323,64 @@ class PipelinesConfig:
         pipeline : `list` [`str`]
             Path(s) to the configured pipeline file(s). An empty list means
             that *no* pipeline should be run on this visit.
+
+        Raises
+        ------
+        ValueError
+            Raised if the visit has invalid or unsupported fields.
         """
         for node in self._specs:
             if node.matches(visit):
                 return node.pipeline_files
-        raise RuntimeError(f"Unsupported survey: {visit.survey}")
+        raise RuntimeError(f"No pipelines config matches {visit}")
+
+
+class _LinearRange:
+    """A [min, max] range on the number line.
+
+    Parameters
+    ----------
+    min, max : numeric
+        The endpoints of the range. The range requires that `min < max`.
+    """
+
+    def __init__(self, min: numbers.Real, max: numbers.Real):
+        self._min = min
+        self._max = max
+        if self._min >= self._max:
+            raise ValueError(f"Invalid range ({min}, {max}).")
+
+    def __contains__(self, value: numbers.Real) -> bool:
+        """Test if a number falls inside the range.
+
+        The range includes both endpoints.
+        """
+        return self._min <= value and value <= self._max
+
+
+class _WrapRange:
+    """A range on a circular domain.
+
+    Parameters
+    ----------
+    min, max : numeric
+        The endpoints of the range. Values outside [0, ``wrap``) are allowed.
+        Because the domain is circular, [a, b) is the complement of [b, a).
+    wrap : numeric
+        The point at which the domain wraps back to 0.
+    """
+
+    def __init__(self, min: numbers.Real, max: numbers.Real, wrap: numbers.Real):
+        # invariant: _min, _max are in [0, wrap)
+        self._min = min % wrap
+        self._max = max % wrap
+
+    def __contains__(self, value: numbers.Real) -> bool:
+        """Test if a number falls inside the range.
+
+        The range includes both endpoints.
+        """
+        if self._min < self._max:  # Range excludes 0
+            return self._min <= value and value <= self._max
+        else:  # Range wraps through 0
+            return self._min <= value or value <= self._max
