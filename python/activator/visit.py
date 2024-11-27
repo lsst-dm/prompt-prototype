@@ -27,6 +27,10 @@ import enum
 import astropy.coordinates
 import astropy.units as u
 
+import lsst.afw.cameraGeom
+import lsst.afw.geom
+import lsst.obs.base
+
 
 @dataclass(frozen=True, kw_only=True)
 class BareVisit:
@@ -161,6 +165,74 @@ class FannedOutVisit(BareVisit):
         info.pop("detector")
         info.pop("private_sndStamp")
         return info
+
+    def predict_wcs(self,
+                    boresight: astropy.coordinates.SkyCoord,
+                    rotation: astropy.coordinates.Angle,
+                    instrument: lsst.obs.base.Instrument,
+                    camera: lsst.afw.cameraGeom.Camera,
+                    ) -> lsst.afw.geom.SkyWcs:
+        """Calculate the expected detector WCS for this visit.
+
+        Parameters
+        ----------
+        boresight : `astropy.coordinates.SkyCoord`
+            The ICRS position of the boresight.
+        rotation : `astropy.coordinates.Angle`
+            The position angle of focal plane +Y, measured east of north.
+        instrument : `lsst.obs.base.Instrument`
+            The instrument for which to generate a WCS.
+        camera : `lsst.afw.cameraGeom.Camera`
+            The camera for which to generate a WCS.
+
+        Returns
+        -------
+        wcs : `lsst.afw.geom.SkyWcs`
+            An approximate WCS for this visit.
+        """
+        detector = camera[self.detector]
+
+        sphere_point = lsst.geom.SpherePoint(boresight.ra.degree, boresight.dec.degree, lsst.geom.degrees)
+        geom_angle = rotation.degree * lsst.geom.degrees
+
+        formatter = instrument.getRawFormatter({"detector": detector.getId()})
+        return formatter.makeRawSkyWcsFromBoresight(sphere_point, geom_angle, detector)
+
+    def get_detector_icrs_region(self,
+                                 instrument: lsst.obs.base.Instrument,
+                                 camera: lsst.afw.cameraGeom.Camera,
+                                 ) -> lsst.sphgeom.Region | None:
+        """Return the detector region in ICRS coordinates.
+
+        Parameters
+        ----------
+        instrument : `lsst.obs.base.Instrument`
+            The instrument whose detector footprint is desired.
+        camera : `lsst.afw.cameraGeom.Camera`
+            The camera whose detector footprint is desired.
+
+        Returns
+        -------
+        region : `lsst.sphgeom.Region` or `None`
+            The expected detector footprint, or `None` if the visit does not
+            have a position.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the coordinates are in an unsupported system.
+        """
+        icrs = self.get_boresight_icrs()
+        if icrs is None:
+            return None
+        rotation = self.get_rotation_sky()
+        if rotation is None:
+            return None
+
+        wcs = self.predict_wcs(icrs, rotation, instrument, camera)
+        detector = camera[self.detector]
+        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
+        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in corners])
 
 
 @dataclass(frozen=True, kw_only=True)

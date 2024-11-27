@@ -467,55 +467,19 @@ class MiddlewareInterface:
         except LookupError as e:
             raise RuntimeError("Cache is too small for one run's worth of datasets.") from e
 
-    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
-        """Calculate the expected detector WCS for an incoming observation.
+    def _pad_region(self, initial_region: lsst.sphgeom.Region) -> lsst.sphgeom.Region:
+        """Pad the expected footprint to allow for slew errors.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector for which to generate a WCS.
-
-        Returns
-        -------
-        wcs : `lsst.afw.geom.SkyWcs`
-            An approximate WCS for this object's visit.
-
-        Raises
-        ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
-        """
-        try:
-            sky_position = self.visit.get_boresight_icrs()
-            boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
-                                                     lsst.geom.degrees)
-            orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
-        except TypeError as e:
-            raise _NoPositionError("nextVisit does not have a position.") from e
-        except RuntimeError as e:
-            raise _NoPositionError(str(e)) from e
-
-        formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
-        return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
-
-    def _compute_region(self) -> lsst.sphgeom.Region:
-        """Compute the sky region of this visit for preload
+        initial_region : `lsst.sphgeom.Region`
+            The unpadded region to expand.
 
         Returns
         -------
         region : `lsst.sphgeom.Region`
-            Region for preload.
-
-        Raises
-        ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
+            The padded region.
         """
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-
         # Compare the preload region padding versus the visit region padding
         # in the middleware visit definition.
         visit_definition_padding = (
@@ -528,10 +492,16 @@ class MiddlewareInterface:
                          "visit definition's region padding (%.1f arcsec).",
                          preload_region_padding, visit_definition_padding)
 
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
-        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        if isinstance(initial_region, lsst.sphgeom.ConvexPolygon):
+            center = lsst.geom.SpherePoint(initial_region.getCentroid())
+            corners = [lsst.geom.SpherePoint(c) for c in initial_region.getVertices()]
+            padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+            return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        elif isinstance(initial_region, lsst.sphgeom.Circle):
+            return lsst.sphgeom.Circle(initial_region.getCenter(),
+                                       initial_region.getOpeningAngle() + self.padding)
+        else:
+            raise ValueError("Cannot pad region %r.", initial_region)
 
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
