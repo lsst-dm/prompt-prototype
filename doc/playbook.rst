@@ -67,6 +67,36 @@ Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
 
+In case your intended Base Container is not a tagged Science Pipelines Release: Building the Science Pipelines Manually
+-----------------------------------------------------------------------------------------------------------------------
+It will sometimes be necessary to compile a container with the LSST Science Pipelines manually. Generally, this only occurs if the intended daily or weekly stack does not compile. In these cases, the Science Pipelines themselves must be built ahead of the base container. Here are instructions for building the Science Pipelines.
+
+#. Check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_ to make sure only the intended changes are on ``main``.
+   
+   If ``main`` contains only changes that are intended for the Science Pipelines build, proceed and build the main branch! Otherwise, a cherry-pick or backport branch should be built.
+
+#. Go to the `GitHub Actions build system for the Science Pipelines. <https://github.com/lsst/gha_build/actions/workflows/build.yaml>`_
+
+#. Select "**Run Workflow**."" In the drop-down menu, fill in the following details:
+   
+   #. **Use workflow from** 
+
+      In almost all cases, you'll want the ``main`` branch. Generally speaking, this is the branch of the Science Pipelines that you're trying to build. If there is a specific branch for a cherry-pick or backport, you'll want that branch instead.
+
+   #. **List of products to build**
+
+      Insert products to build, just like for Jenkins, but the default is what the standard containers have (except ``pipelines_check``).
+
+   #. **Version of rubin-env conda environment**
+
+      Make sure this matches the version for the current LSST Science Pipelines! At time of writing, the GitHub Actions page suggests version ``8.0.0`` and this needed to be set to version ``9.0.0``
+
+   #. **Container tag**
+
+      Select a tag for the container that reflects its contents (e.g. ``d_2024_06_21_DM-44996`` or ``or4_pp_20240625``). The rubin-env version will be appended.
+
+   Click "**Run Workflow**". The resulting container, if things succeed, will be available at ``ghcr.io/lsst/quick-stack:{your tag here}-{rubin-env version}``. 
+
 Release Management
 ==================
 
