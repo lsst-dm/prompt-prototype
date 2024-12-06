@@ -108,76 +108,76 @@ From the ``main`` branch you can release a new major version (``X.0.0``), a new 
 Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
 Please note that the tag does not include a ``v`` at the beginning.
 
-1. Choose Version Number
+#. Choosing the Version Number
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click the latest release.
-At the top of the page, click **## commits to main since this release**.
-(If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
-This is the list of internal changes that will be included in the next release.
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click the latest release.
+   At the top of the page, click **## commits to main since this release**.
+   (If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
+   This is the list of internal changes that will be included in the next release.
 
-If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
-In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
-In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
+   If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
+   In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
+   In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
 
-For the ``prompt_processing`` service, a new major version is triggered by any of the following:
+   For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
-* Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
-* Incompatibility with an old `Butler dimensions-config`_ version
-* A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
+   * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
+   * Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
+   * Incompatibility with an old `Butler dimensions-config`_ version
+   * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
-For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
+   For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
 
-* Incompatibility with old Summit ``nextVisit`` messages
-* Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
+   * Incompatibility with old Summit ``nextVisit`` messages
+   * Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
 
-2. Create a Release
+#. Create a Release
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click **Releases**.
-At the top of the page, click **Draft a new release**.
-Type a tag using semantic versioning described in the previous section.
-The Target should be the main branch.
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click **Releases**.
+   At the top of the page, click **Draft a new release**.
+   Type a tag using semantic versioning described in the previous section.
+   The Target should be the main branch.
 
-Select **Generate Release Notes**.
-This will generate a list of commit summaries and of submitters.
-Add text as follows.
+   Select **Generate Release Notes**.
+   This will generate a list of commit summaries and of submitters.
+   Add text as follows.
 
-* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
-* Science Pipelines version and rubin-env version
-* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
-  You do *not* need to consider the `ApdbCassandraReplica` version.
-  A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
-* Supported `Butler dimensions-config`_ versions
-* The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+   * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
+   * Science Pipelines version and rubin-env version
+   * Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
+     You do *not* need to consider the `ApdbCassandraReplica` version.
+     A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
+   * Supported `Butler dimensions-config`_ versions
+   * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
-.. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
+   .. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
 
-.. _DMTN-269: https://dmtn-269.lsst.io/
+   .. _DMTN-269: https://dmtn-269.lsst.io/
 
-.. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
+   .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
 
-.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm_schemas/schemas/apdb.yaml#L4
+   .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm_schemas/schemas/apdb.yaml#L4
 
-.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L72-L76
+   .. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L72-L76
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L85-L89
+   .. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L85-L89
 
-.. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
+   .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
-Select **Publish Release**.
+   Select **Publish Release**.
 
-The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
+   The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 
-3. Tag the release
+#. Tag the release
 
-At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
+   At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
 
-.. code-block:: sh
+   .. code-block:: sh
 
-   git tag -s X.Y.Z -m "X.Y.Z"
-   git push --tags
+      git tag -s X.Y.Z -m "X.Y.Z"
+      git push --tags
 
 Patch Releases and Release Branches
 -----------------------------------
