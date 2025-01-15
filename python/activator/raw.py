@@ -45,7 +45,7 @@ import urllib.parse
 
 import requests
 
-from lsst.obs.lsst import LsstCam, LsstComCam, LsstComCamSim
+from lsst.obs.lsst import LsstCam, LsstCamImSim, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
@@ -73,7 +73,16 @@ OTHER_REGEXP = re.compile(
 ################################
 
 # The list of camera names that might be used for LSST
-_LSST_CAMERA_LIST = ("LATISS", "ComCam", "LSSTComCam", "LSSTComCamSim", "LSSTCam", "TS8", "LSST-TS8")
+_LSST_CAMERA_LIST = (
+    "LATISS",
+    "ComCam",
+    "LSSTComCam",
+    "LSSTComCamSim",
+    "LSSTCam",
+    "TS8",
+    "LSST-TS8",
+    "LSSTCam-imSim",
+)
 
 # Translate from Camera path prefixes to official names.
 _TRANSLATE_INSTRUMENT = {
@@ -88,6 +97,7 @@ _CAMERA_ABBREV = {
     "LSSTComCamSim": "CC",
     "LSSTCam": "MC",
     "LSST-TS8": "TS",
+    "LSSTCam-imSim": "IS",  # Made up in PP testing.
 }
 
 # For each LSST Camera, we need the mapping from detector name to detector
@@ -98,6 +108,7 @@ _CAMERA_ABBREV = {
 # Note that the getCamera() method may be replaced in the future.
 
 _LSSTCAM = LsstCam.getCamera().getNameMap()
+_LSSTCAMIMSIM = LsstCamImSim.getCamera().getNameMap()
 _LSSTCOMCAM = LsstComCam.getCamera().getNameMap()
 _LSSTCOMCAMSIM = LsstComCamSim.getCamera().getNameMap()
 
@@ -107,6 +118,7 @@ _DETECTOR_FROM_RS = {
     "LSSTComCamSim": {name: value.getId() for name, value in _LSSTCOMCAMSIM.items()},
     "LSST-TS8": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
     "LSSTCam": {name: value.getId() for name, value in _LSSTCAM.items()},
+    "LSSTCam-imSim": {name: value.getId() for name, value in _LSSTCAMIMSIM.items()},
 }
 
 # Build the reverse mapping.

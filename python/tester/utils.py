@@ -38,6 +38,7 @@ import requests
 from astropy.io import fits
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
+from lsst.obs.lsst.translators import LsstCamImSimTranslator
 
 from activator.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
 
@@ -59,6 +60,7 @@ INSTRUMENTS = {
     "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
     "HSC": Instrument(1, 112, 999),
+    "LSSTCam-imSim": Instrument(1, 189, 4),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 99
@@ -184,7 +186,9 @@ def make_exposure_id(instrument, group_id, snap):
         The header key-value pairs to accompany with the exposure ID in the
         format for ``instrument``'s header.
     """
-    if instrument in _LSST_CAMERA_LIST:
+    if instrument == "LSSTCam-imSim":
+        return make_imsim_id(group_id, snap)
+    elif instrument in _LSST_CAMERA_LIST:
         abbrev = _CAMERA_ABBREV[instrument]
         return make_lsst_id(group_id, snap, abbrev)
     elif instrument == "HSC":
@@ -260,6 +264,34 @@ def make_lsst_id(group_id, snap, abbrev):
     }
 
 
+def make_imsim_id(group_id, snap):
+    """Generate an exposure ID that the Butler can parse as a valid LSSTCam-imSim ID.
+
+    Parameters
+    ----------
+    group_id : `str`
+        The mocked group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure_number :
+        An exposure ID in the format expected by Gen 3 Middleware.
+    headers : `dict`
+        The key-value pairs are in the form to appear in LSST headers.
+    """
+    day_obs, seq_num = decode_group(group_id)
+    exposure_num = LsstCamImSimTranslator.compute_exposure_id(day_obs, seq_num)
+    return exposure_num, {
+        "OBSID": exposure_num,
+        # These headers do not exist in original imsim files, but are added for
+        # mocked exposure records.
+        "DAYOBS": day_obs,
+        "GROUPID": group_id,
+    }
+
+
 def send_next_visit(url, group, visit_infos):
     """Simulate the transmission of a ``next_visit`` message to Sasquatch.
 
@@ -287,7 +319,7 @@ def send_next_visit(url, group, visit_infos):
 
 
 def replace_header_key(file, key, value):
-    """Replace a header key in a FITS file with a new key-value pair.
+    """Replace or add a header key in a FITS file with a new key-value pair.
 
     The file is updated in place, and left open when the function returns,
     making this function safe to use with temporary files.
@@ -308,6 +340,9 @@ def replace_header_key(file, key, value):
         for header in (hdu.header for hdu in hdus):
             if key in header:
                 _log.debug("Setting %s to %s.", key, value)
+                header[key] = value
+            else:
+                _log.debug("Adding header %s: %s.", key, value)
                 header[key] = value
     finally:
         # Clean up HDUList object *without* closing ``file``.
