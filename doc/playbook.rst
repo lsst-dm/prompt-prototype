@@ -213,7 +213,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo_2/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC, LATISS, and LSSTComCamSim data, uploaded with ``make_export.py``.
+  This repository currently contains HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
@@ -483,7 +483,7 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, and LSSTComCamSim) and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim) and the number of groups of images to send.
 
 Sample command line:
 
@@ -492,6 +492,7 @@ Sample command line:
    python upload.py HSC 3
    python upload.py LATISS 3
    python upload.py LSSTComCamSim 1
+   python upload.py LSSTCam-imSim 2
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
@@ -501,6 +502,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
+* For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
 ``python/tester/upload_from_repo.py``: Command line arguments are a configuration file and the number of groups of images to send.
 
