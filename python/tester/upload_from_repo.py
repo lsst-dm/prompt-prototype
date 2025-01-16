@@ -309,12 +309,13 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
         if instrument in _LSST_CAMERA_LIST:
             # Upload a corresponding sidecar json file
             sidecar = butler.getURI(ref).updatedExtension("json")
-            with sidecar.open("r") as f:
-                md = json.load(f)
-                md.update(headers)
-                dest_bucket.put_object(
-                    Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
-                )
+            if sidecar.exists():
+                with sidecar.open("r") as f:
+                    md = json.load(f)
+                    md.update(headers)
+                    dest_bucket.put_object(
+                        Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
+                    )
 
         # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
         transferred = butler.retrieveArtifacts(
