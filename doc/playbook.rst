@@ -21,16 +21,18 @@ Containers
 ==========
 
 The service consists of two containers.
-The first is a base container with the Science Pipelines "stack" code and networking utilities.
-The second is a service container made from the base that has the Prompt Processing service code.
+The first is a **base container** with the Science Pipelines "stack" code and networking utilities.
+The second is a **service container** made from the base that has the Prompt Processing service code.
 All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_processing>`_ and are built using GitHub Actions.
 
 To build the base container:
 
 * If there are changes to the container, push them to a branch, then open a PR.
-  The container should be built automatically.
-* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "Run workflow".
-  From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
+  This will build the container automatically.
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "**Run workflow**". From the dropdown menu, select:
+
+  #. The branch whose container definition will be used
+  #. The label of the Science Pipelines container.
 * New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
   Containers built from a branch use the same scheme, but prefixed by the ticket number or, for user branches, the branch topic.
@@ -44,12 +46,14 @@ To build the base container:
 To build the service container:
 
 * If there are changes to the service, push them to a branch, then open a PR.
-  The container should be built automatically using the ``latest`` base container.
-* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
+  This will build the container automatically using the ``latest`` base container.
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "**Run workflow**".
   From the dropdown, select the branch whose code should be built.
-  The container will be built using the ``latest`` base container, even if there is a branch build of the base.
-* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
-  Be careful not to merge the temporary override to ``main``!
+  By default, the container is built using the ``latest`` base container, even if there is a branch build of the base.
+
+  *  If this is the desired base container, no action is necessary.
+  *  To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+     Be careful not to merge the temporary override to ``main``!
 * New service containers built from ``main`` have the tags of their base container.
   Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
 
@@ -67,6 +71,44 @@ Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
 
+Building the Science Pipelines Manually (aka "Quick-Stack Build")
+-----------------------------------------------------------------
+It will sometimes be necessary to compile a container with the LSST Science Pipelines manually.
+Generally, this only occurs if the intended daily or weekly stack does not compile.
+In these cases, the Science Pipelines themselves must be built ahead of the base container.
+Here are instructions for building the Science Pipelines.
+
+#. Check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_ to make sure only the intended changes are on ``main``.
+   
+   If ``main`` contains only changes that are intended for the Science Pipelines build, proceed and build the main branch!
+   Otherwise, you will need backport branches in each Science Pipelines package with changes of interest.
+
+#. Go to the `GitHub Actions build system for the Science Pipelines. <https://github.com/lsst/gha_build/actions/workflows/build.yaml>`_
+
+#. Select "**Run Workflow**."" In the drop-down menu, fill in the following details:
+   
+   * **Use workflow from** 
+
+      In almost all cases, you'll want the ``main`` branch.
+
+   * **List of refs to build; do not specify main**
+
+       Generally speaking, this is the branch of the Science Pipelines that you're trying to build. If there is a specific branch for a cherry-pick or backport, you'll want that branch instead.
+
+   * **List of products to build**
+
+      Insert products to build, just like for Jenkins, but the default is what the standard containers have (except ``pipelines_check``).
+
+   * **Version of rubin-env conda environment**
+
+      Make sure this matches the version for the current LSST Science Pipelines! At time of writing, the GitHub Actions page suggests version ``8.0.0`` and this needed to be set to version ``9.0.0``
+
+   * **Container tag**
+
+      Select a tag for the container that reflects its contents (e.g. ``d_2024_06_21_DM-44996`` or ``or4_pp_20240625``). The rubin-env version will be appended.
+
+   Click "**Run Workflow**". The resulting container, if things succeed, will be available at ``ghcr.io/lsst/quick-stack:{your tag here}-{rubin-env version}``. 
+
 Release Management
 ==================
 
@@ -78,76 +120,82 @@ From the ``main`` branch you can release a new major version (``X.0.0``), a new 
 Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
 Please note that the tag does not include a ``v`` at the beginning.
 
-1. Choose Version Number
+#. Choosing the Version Number
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click the latest release.
-At the top of the page, click **## commits to main since this release**.
-(If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
-This is the list of internal changes that will be included in the next release.
+   The first step in making a release is choosing an appropriate version number to describe it. This subsection offers guidance on this choice, as well as on differentiating between major and minor releases.
 
-If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
-In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
-In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
+   **To see which changes have occurred since the last release:**
 
-For the ``prompt_processing`` service, a new major version is triggered by any of the following:
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click the latest release.
+   At the top of the page, click **## commits to main since this release**.
+   (If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
+   This is the list of internal changes that will be included in the next release.
 
-* Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
-* Incompatibility with an old `Butler dimensions-config`_ version
-* A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
+   If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
+   In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
+   You may need to do a "Quick-Stack" build, or build the science pipelines manually. This would justify a patch version of Prompt Processing.
 
-For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
+   **The following changes will always trigger a major release:**
 
-* Incompatibility with old Summit ``nextVisit`` messages
-* Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
+   For the ``prompt_processing`` service:
 
-2. Create a Release
+   * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
+   * Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
+   * Incompatibility with an old `Butler dimensions-config`_ version
+   * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click **Releases**.
-At the top of the page, click **Draft a new release**.
-Type a tag using semantic versioning described in the previous section.
-The Target should be the main branch.
+   For the `next_visit_fan_out`_ service:
 
-Select **Generate Release Notes**.
-This will generate a list of commit summaries and of submitters.
-Add text as follows.
+   * Incompatibility with old Summit ``nextVisit`` messages
+   * Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
 
-* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
-* Science Pipelines version and rubin-env version
-* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
-  You do *not* need to consider the `ApdbCassandraReplica` version.
-  A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
-* Supported `Butler dimensions-config`_ versions
-* The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+#. Create a Release
 
-.. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click **Releases**.
+   At the top of the page, click **Draft a new release**.
+   Type a tag using semantic versioning described in the previous section.
+   The Target should be the main branch.
 
-.. _DMTN-269: https://dmtn-269.lsst.io/
+   Select **Generate Release Notes**.
+   This will generate a list of commit summaries and of submitters.
+   Add text as follows:
 
-.. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
+   * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
+   * Science Pipelines version and rubin-env version
+   * Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
+     You do *not* need to consider the `ApdbCassandraReplica` version.
+     A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
+   * Supported `Butler dimensions-config`_ versions
+   * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
-.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm_schemas/schemas/apdb.yaml#L4
+   .. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
 
-.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L72-L76
+   .. _DMTN-269: https://dmtn-269.lsst.io/
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L85-L89
+   .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
 
-.. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
+   .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm_schemas/schemas/apdb.yaml#L4
 
-Select **Publish Release**.
+   .. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L72-L76
 
-The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
+   .. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L85-L89
 
-3. Tag the release
+   .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
-At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
+   Select **Publish Release**.
 
-.. code-block:: sh
+   The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 
-   git tag -s X.Y.Z -m "X.Y.Z"
-   git push --tags
+#. Tag the release
+
+   At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
+
+   .. code-block:: sh
+
+      git tag -s X.Y.Z -m "X.Y.Z"
+      git push --tags
 
 Patch Releases and Release Branches
 -----------------------------------
