@@ -57,7 +57,7 @@ from activator.exception import NonRetriableError, NoGoodPipelinesError, Pipelin
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
-    _filter_datasets, _generic_query, _filter_calibs_by_date, _MissingDatasetError
+    _filter_datasets, _generic_query, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -1175,45 +1175,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         result = _generic_query(["bias"], instrument=instname)(butler)
 
         self.assertEqual(result, set())
-
-    def test_filter_calibs_by_date_valid(self):
-        # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = list(self.central_butler.registry.queryDatasets("bias"))
-        now_calibs = list(_filter_calibs_by_date(
-            self.central_butler, "LSSTComCamSim/calib", all_calibs,
-            astropy.time.Time("2024-06-20 00:00:00", scale="utc")
-        ))
-        self.assertEqual(len(now_calibs), 2)
-        for calib in now_calibs:
-            self.assertEqual(calib.run, "u/jchiang/bias_70240217_w_2024_07/20240218T190659Z")
-
-    def test_filter_calibs_by_date_never(self):
-        # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = list(self.central_butler.registry.queryDatasets("bias"))
-        with warnings.catch_warnings():
-            # Avoid "dubious year" warnings from using a 2050 date
-            warnings.simplefilter("ignore", category=erfa.ErfaWarning)
-            future_calibs = list(_filter_calibs_by_date(
-                self.central_butler, "LSSTComCamSim/calib", all_calibs,
-                astropy.time.Time("2050-01-01 00:00:00", scale="utc")
-            ))
-        self.assertEqual(len(future_calibs), 0)
-
-    def test_filter_calibs_by_date_unbounded(self):
-        # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "transmission_filter"]))
-        valid_calibs = set(_filter_calibs_by_date(
-            self.central_butler, "LSSTComCamSim/calib", all_calibs,
-            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
-        ))
-        self.assertEqual(valid_calibs, all_calibs)
-
-    def test_filter_calibs_by_date_empty(self):
-        valid_calibs = set(_filter_calibs_by_date(
-            self.central_butler, "LSSTComCamSim/calib", [],
-            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
-        ))
-        self.assertEqual(len(valid_calibs), 0)
 
 
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):

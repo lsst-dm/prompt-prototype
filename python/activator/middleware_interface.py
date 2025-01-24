@@ -1865,7 +1865,6 @@ def _filter_datasets(src_repo: Butler,
 
 def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
                    *args,
-                   calib_date: astropy.time.Time | None = None,
                    **kwargs) -> collections.abc.Callable[[Butler, str], _DatasetResults]:
     """Generate a parameterized Butler dataset query.
 
@@ -1873,9 +1872,6 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
     ----------
     dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
         Iterable of dataset type object or name to search for.
-    calib_date : `astropy.time.Time`, optional
-        If provided, also filter anything other than calibs valid at
-        ``calib_date`` and check that at least one valid calib was found.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.query_datasets`.
@@ -1912,64 +1908,11 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
                     # where there are no, and never have been, any matching datasets.
                     # It *is* a problem for the central repo, but can be caught later.
                     _log.debug("%s query failed with %s.", label, e)
-            if calib_date:
-                datasets = set(_filter_calibs_by_date(
-                    butler,
-                    kwargs["collections"] if "collections" in kwargs else ...,
-                    datasets,
-                    calib_date,
-                ))
             # Trace3 because, in many contexts, datasets is too large to print.
             _log_trace3.debug("%s: %s", label, datasets)
             return datasets
 
     return query
-
-
-def _filter_calibs_by_date(butler: Butler,
-                           collections: typing.Any,
-                           unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
-                           date: astropy.time.Time
-                           ) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
-    """Trim a set of calib datasets to those that are valid at a particular time.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The Butler to query for validity data.
-    collections : collection expression
-        The calibration collection(s), or chain(s) containing calibration
-        collections, to query for validity data.
-    unfiltered_calibs : collection [`lsst.daf.butler.DatasetRef`]
-        The calibs to be filtered by validity. May be empty.
-    date : `astropy.time.Time`
-        The time at which the calibs must be valid.
-
-    Returns
-    -------
-    filtered_calibs : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets in ``unfiltered_calibs`` that are valid on ``date``. Not
-        guaranteed to be the same `~lsst.daf.butler.DatasetRef` objects passesd
-        to ``unfiltered_calibs``, but guaranteed to be fully expanded.
-    """
-    with lsst.utils.timer.time_this(_log, msg="filter_calibs", level=logging.DEBUG):
-        # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
-        # Minimize redundant queries to find_dataset.
-        unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
-        t = Timespan.fromInstant(date)
-        _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
-        filtered_calibs = []
-        for dataset_type, data_id in unique_ids:
-            # Use find_dataset to simultaneously filter by validity and chain order
-            found_ref = butler.find_dataset(dataset_type,
-                                            data_id,
-                                            collections=collections,
-                                            timespan=t,
-                                            dimension_records=True,
-                                            )
-            if found_ref:
-                filtered_calibs.append(found_ref)
-        return filtered_calibs
 
 
 def _get_refcat_types(butler):
