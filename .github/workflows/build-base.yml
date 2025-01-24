@@ -36,7 +36,7 @@ env:
   IMAGE_NAME: prompt-base
   # All inputs are null for PR/push builds
   PIPE_CONTAINER: ${{ inputs.pipeContainer || 'lsstsqre/centos' }}
-  STACK_TAG: ${{ inputs.stackTag || 'd_latest' }}
+  STACK_TAG: ${{ inputs.stackTag || 'w_latest' }}
   MAKE_LATEST: ${{ inputs.makeLatest && 'true' || 'false' }}
 
 jobs:
