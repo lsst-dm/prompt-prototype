@@ -1066,30 +1066,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 result = set(_filter_datasets(src_butler, existing_butler, query))
                 self.assertEqual(result, diff)
 
-    def test_filter_datasets_nodim(self):
-        """Test that _filter_datasets provides the correct values when
-        the destination repository is missing not only datasets, but the
-        dimensions to define them.
-        """
-        # Much easier to create DatasetRefs with a real repo.
-        registry = self.central_butler.registry
-        data1 = self._make_expanded_ref(registry, "skyMap", {"skymap": skymap_name}, "dummy")
-
-        src_butler = unittest.mock.Mock()
-        existing_butler = unittest.mock.Mock()
-
-        def query(butler, _label):
-            if butler is src_butler:
-                return {data1}
-            elif butler is existing_butler:
-                raise lsst.daf.butler.registry.DataIdValueError(
-                    f"Unknown values specified for governor dimension skymap: {skymap_name}")
-            else:
-                raise ValueError("Unknown butler!")
-
-        result = set(_filter_datasets(src_butler, existing_butler, query))
-        self.assertEqual(result, {data1})
-
     def test_filter_datasets_nosrc(self):
         """Test that _filter_datasets reports if the datasets are missing from
         the source repository, regardless of whether they are present in the
@@ -1186,6 +1162,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Implementation may add other kwargs.
         self.assertEqual(butler.query_datasets.call_args.kwargs["instrument"], "LSSTComCamSim")
         self.assertEqual(set(result), set(refs))
+
+    def test_generic_query_nodim(self):
+        """Test that _generic_query provides the correct values when
+        a repository is missing not only datasets, but the dimensions
+        to define them.
+        """
+        butler = unittest.mock.Mock(**{
+            "query_datasets.side_effect": lsst.daf.butler.registry.DataIdValueError(
+                f"Unknown values specified for governor dimension instrument: {instname}")
+        })
+        result = _generic_query(["bias"], instrument=instname)(butler)
+
+        self.assertEqual(result, set())
 
     def test_filter_calibs_by_date_valid(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable

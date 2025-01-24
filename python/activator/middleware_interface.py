@@ -1843,13 +1843,7 @@ def _filter_datasets(src_repo: Butler,
     _MissingDatasetError
         Raised if the query on ``src_repo`` failed to find any datasets.
     """
-    try:
-        known_datasets = query(dest_repo, "known datasets")
-    except (DataIdValueError, MissingDatasetTypeError) as e:
-        # If dimensions are invalid or dataset type never registered locally,
-        # then *any* such datasets are missing.
-        _log.debug("Known datasets query failed with %s", e)
-        known_datasets = set()
+    known_datasets = query(dest_repo, "known datasets")
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
@@ -1902,10 +1896,16 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
                                         level=logging.DEBUG):
             datasets = set()
             for dataset_type in dataset_types:
-                datasets |= set(butler.query_datasets(
-                    # explain=False because empty query result is ok here.
-                    dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
-                ))
+                try:
+                    datasets |= set(butler.query_datasets(
+                        # explain=False because empty query result is ok here.
+                        dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                    ))
+                except (DataIdValueError, MissingDatasetTypeError) as e:
+                    # Dimensions/dataset type often invalid for fresh local repo,
+                    # where there are no, and never have been, any matching datasets.
+                    # It *is* a problem for the central repo, but can be caught later.
+                    _log.debug("%s query failed with %s.", label, e)
             if calib_date:
                 datasets = set(_filter_calibs_by_date(
                     butler,
