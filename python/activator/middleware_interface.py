@@ -806,14 +806,20 @@ class MiddlewareInterface:
                 query = query.where(data_id)
                 datasets = set()
                 for dataset_type in type_names:
-                    datasets |= set(
-                        query.datasets(dataset_type,
-                                       self.instrument.makeCalibrationCollectionName(),
-                                       find_first=True)
-                        # where needs to come after datasets to pick up the type
-                        .where(expr[dataset_type].timespan.overlaps(calib_date))
-                        .with_dimension_records()
-                    )
+                    try:
+                        datasets |= set(
+                            query.datasets(dataset_type,
+                                           self.instrument.makeCalibrationCollectionName(),
+                                           find_first=True)
+                            # where needs to come after datasets to pick up the type
+                            .where(expr[dataset_type].timespan.overlaps(calib_date))
+                            .with_dimension_records()
+                        )
+                    except (DataIdValueError, MissingDatasetTypeError) as e:
+                        # Dimensions/dataset type often invalid for fresh local repo,
+                        # where there are no, and never have been, any matching datasets.
+                        # It *is* a problem for the central repo, but can be caught later.
+                        _log.debug("%s query failed with %s.", label, e)
                 # Trace3 because, in many contexts, datasets is too large to print.
                 _log_trace3.debug("%s: %s", label, datasets)
                 return datasets
