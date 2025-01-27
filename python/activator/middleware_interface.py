@@ -127,7 +127,11 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
         with lsst.utils.timer.time_this(_log, msg="flush_local_repo (find datasets)", level=logging.DEBUG):
             safe_types = MiddlewareInterface._get_safe_dataset_types(butler)
             # Exclude calibs, templates, and other input datasets
-            datasets = set(butler.registry.queryDatasets(safe_types, collections="*/prompt/*"))
+            datasets = set()
+            for dataset_type in safe_types:
+                datasets |= set(
+                    butler.query_datasets(dataset_type, collections="*/prompt/*", find_first=False)
+                )
         with lsst.utils.timer.time_this(_log, msg="flush_local_repo (transfer)", level=logging.DEBUG):
             MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
             transferred = central_butler.transfer_from(butler, datasets,
@@ -1263,7 +1267,7 @@ class MiddlewareInterface:
             collections in ``self.butler``.
         data_ids : `str`
             A query string, in the format of the ``where`` parameter to
-            `lsst.daf.butler.Registry.queryDataIds`, specifying the data IDs
+            `lsst.daf.butler.query_data_ids`, specifying the data IDs
             over which to run the pipelines.
         label : `str`
             A unique name to disambiguate this pipeline run for logging
@@ -1398,9 +1402,9 @@ class MiddlewareInterface:
         changes : `bool`
             `True` if changes have been made, `False` if retries are safe.
         """
-        data_ids = set(self.butler.registry.queryDataIds(["instrument", "visit", "detector"], where=where))
+        data_ids = self.butler.query_data_ids(["instrument", "visit", "detector"], where=where, explain=False)
         if len(data_ids) == 1:
-            data_id = data_ids.pop()
+            data_id = data_ids[0]
             apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
             return apdb.containsVisitDetector(data_id["visit"], self.visit.detector)
         elif not data_ids:
@@ -1594,19 +1598,22 @@ class MiddlewareInterface:
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
             try:
-                # Need to iterate over datasets at least twice, so make a collection.
-                datasets = set(self.butler.registry.queryDatasets(
-                    dataset_types,
-                    collections=in_collections,
-                    # in_collections may include other runs, so need to filter.
-                    # Since AP processing is strictly visit-detector, these three
-                    # dimensions should suffice.
-                    # DO NOT assume that visit == exposure!
-                    where="exposure in (exposure_ids)",
-                    bind={"exposure_ids": exposure_ids},
-                    instrument=self.instrument.getName(),
-                    detector=self.visit.detector,
-                ).expanded())
+                datasets = set()
+                for dataset_type in dataset_types:
+                    datasets |= set(self.butler.query_datasets(
+                        dataset_type,
+                        collections=in_collections,
+                        # in_collections may include other runs, so need to filter.
+                        # Since AP processing is strictly visit-detector, these three
+                        # dimensions should suffice.
+                        # DO NOT assume that visit == exposure!
+                        where="exposure in (exposure_ids)",
+                        bind={"exposure_ids": exposure_ids},
+                        with_dimension_records=True,
+                        explain=False,  # Failed runs might not have datasets of every type.
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                    ))
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
 
@@ -1653,7 +1660,7 @@ class MiddlewareInterface:
         **kwargs
             Any data ID parameters to select specific records. They have the
             same meanings as the parameters of
-            `lsst.daf.butler.Registry.queryDimensionRecords`.
+            `lsst.daf.butler.Butler.query_dimension_records`.
         """
         core_dimensions = ["group",
                            "day_obs",
@@ -1670,7 +1677,7 @@ class MiddlewareInterface:
         sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
 
         for dimension in sorted_dimensions:
-            records = src_butler.registry.queryDimensionRecords(dimension, **kwargs)
+            records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
             # If records don't match, this is not an error, and central takes precedence.
             dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
@@ -1725,18 +1732,20 @@ class MiddlewareInterface:
         matching_types = {dtype for dtype in butler.registry.queryDatasetTypes(...)
                           if dtype.storageClass_name == storage_class}
         _log.debug("Found dataset types matching %s: %s", storage_class, {t.name for t in matching_types})
-        yield from butler.registry.queryDatasets(
-            matching_types,
-            collections=collections,
-            findFirst=True,
-            # collections may include other runs, so need to filter.
-            # Since AP processing is strictly visit-detector, these three
-            # dimensions should suffice.
-            # DO NOT assume that visit == exposure!
-            where="exposure in (exposure_ids)",
-            bind={"exposure_ids": exposure_ids},
-            instrument=self.instrument.getName(),
-            detector=self.visit.detector,
+        yield from itertools.chain(
+            butler.query_datasets(t,
+                                  collections=collections,
+                                  findFirst=True,
+                                  # collections may include other runs, so need to filter.
+                                  # Since AP processing is strictly visit-detector, these three
+                                  # dimensions should suffice.
+                                  # DO NOT assume that visit == exposure!
+                                  where="exposure in (exposure_ids)",
+                                  bind={"exposure_ids": exposure_ids},
+                                  explain=False,
+                                  instrument=self.instrument.getName(),
+                                  detector=self.visit.detector,
+                                  ) for t in matching_types
         )
 
     def _get_template_types(self) -> collections.abc.Set[str]:
@@ -1772,10 +1781,11 @@ class MiddlewareInterface:
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
             if exposure_ids:
-                raws = self.butler.registry.queryDatasets(
+                raws = self.butler.query_datasets(
                     'raw',
                     collections=self.instrument.makeDefaultRawIngestRunName(),
                     where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                    explain=False,  # Raws might not have been ingested.
                     instrument=self.visit.instrument,
                     detector=self.visit.detector,
                 )
@@ -1788,7 +1798,11 @@ class MiddlewareInterface:
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets
-            excess_datasets = frozenset(self.butler.registry.queryDatasets(...)) - frozenset(self.cache)
+            excess_datasets = set()
+            for dataset_type in self.butler.registry.queryDatasetTypes(...):
+                excess_datasets |= set(self.butler.query_datasets(
+                    dataset_type, collections="*", find_first=False, explain=False))
+            excess_datasets -= frozenset(self.cache)
             if excess_datasets:
                 _log_trace.debug("Clearing out %s.", excess_datasets)
                 self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
