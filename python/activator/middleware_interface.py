@@ -1735,7 +1735,7 @@ class MiddlewareInterface:
         yield from itertools.chain(
             butler.query_datasets(t,
                                   collections=collections,
-                                  findFirst=True,
+                                  find_first=True,
                                   # collections may include other runs, so need to filter.
                                   # Since AP processing is strictly visit-detector, these three
                                   # dimensions should suffice.
