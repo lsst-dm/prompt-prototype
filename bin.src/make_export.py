@@ -37,7 +37,7 @@ import yaml
 import lsst.daf.butler as daf_butler
 from lsst.utils.timer import time_this
 
-from activator.middleware_interface import _filter_datasets
+from activator.middleware_interface import _filter_datasets, _generic_query
 
 
 def _make_parser():
@@ -132,7 +132,7 @@ def _export_for_copy(butler, target_butler, wants):
                         all_types, collections_info
                     )
                 records = _filter_datasets(
-                    butler, target_butler, dataset_types, **selection
+                    butler, target_butler, _generic_query(dataset_types, **selection)
                 )
                 contents.saveDatasets(records)
 

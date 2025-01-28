@@ -42,8 +42,8 @@ import lsst.sphgeom
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
-from lsst.daf.butler import DataIdValueError, MissingDatasetTypeError
+from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
+    DataIdValueError, MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -72,9 +72,6 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
-# VALIDITY-HACK: local-only calib collections break if calibs are not requested
-# in chronological order. Turn off for large development runs.
-cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
 # Whether or not to export to the central repo.
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
@@ -130,7 +127,11 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
         with lsst.utils.timer.time_this(_log, msg="flush_local_repo (find datasets)", level=logging.DEBUG):
             safe_types = MiddlewareInterface._get_safe_dataset_types(butler)
             # Exclude calibs, templates, and other input datasets
-            datasets = set(butler.registry.queryDatasets(safe_types, collections="*/prompt/*"))
+            datasets = set()
+            for dataset_type in safe_types:
+                datasets |= set(
+                    butler.query_datasets(dataset_type, collections="*/prompt/*", find_first=False)
+                )
         with lsst.utils.timer.time_this(_log, msg="flush_local_repo (transfer)", level=logging.DEBUG):
             MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
             transferred = central_butler.transfer_from(butler, datasets,
@@ -680,11 +681,12 @@ class MiddlewareInterface:
         _log.debug("Searching for refcats of types %s.", {t.name for t in possible_refcats})
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
-                      possible_refcats,
-                      collections=self.instrument.makeRefCatCollectionName(),
-                      where="htm7.region OVERLAPS search_region",
-                      bind={"search_region": region},
-                      find_first=True,
+                      _generic_query(possible_refcats,
+                                     collections=self.instrument.makeRefCatCollectionName(),
+                                     where="htm7.region OVERLAPS search_region",
+                                     bind={"search_region": region},
+                                     find_first=True,
+                                     ),
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
@@ -712,10 +714,11 @@ class MiddlewareInterface:
         """
         skymaps = set(_filter_datasets(
             self.central_butler, self.butler,
-            ["skyMap"],
-            skymap=self.skymap_name,
-            collections=self._collection_skymap,
-            find_first=True,
+            _generic_query(["skyMap"],
+                           skymap=self.skymap_name,
+                           collections=self._collection_skymap,
+                           find_first=True,
+                           ),
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
@@ -734,12 +737,13 @@ class MiddlewareInterface:
                 _log.debug("Searching for templates.")
                 templates = set(_filter_datasets(
                     self.central_butler, self.butler,
-                    types,
-                    collections=self._collection_template,
-                    data_id=data_id,
-                    where="patch.region OVERLAPS search_region",
-                    bind={"search_region": region},
-                    find_first=True,
+                    _generic_query(types,
+                                   collections=self._collection_template,
+                                   data_id=data_id,
+                                   where="patch.region OVERLAPS search_region",
+                                   bind={"search_region": region},
+                                   find_first=True,
+                                   ),
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError as err:
@@ -750,6 +754,31 @@ class MiddlewareInterface:
         else:
             templates = set()
         return skymaps | templates
+
+    def _get_calib_types(self):
+        """Identify the specific calib types to query.
+
+        Returns
+        -------
+        type_names : collection [`str`]
+            The calib types of interest to Prompt Processing.
+        """
+        # Querying by specific types is much faster than querying by ...
+        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
+        if not filter:
+            _log.warning("Preloading filter-dependent calibs is not supported for visits "
+                         "without a specific filter.")
+            types = {t for t in types
+                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
+        type_names = {t.name for t in types}
+        # For now, filter down to the dataset types that exist in the specific calib collection.
+        # TODO: A new query API after DM-45873 may replace or improve this usage.
+        # TODO: DM-40245 to identify the datasets.
+        collections_info = self.central_butler.collections.query_info(
+            self.instrument.makeCalibrationCollectionName(), include_summary=True)
+        return self.central_butler.collections._filter_dataset_types(type_names, collections_info)
 
     def _export_calibs(self, detector_id, filter):
         """Identify the calibs to export from the central butler.
@@ -769,32 +798,39 @@ class MiddlewareInterface:
         """
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
-        # Querying by specific types is much faster than querying by ...
-        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
-        else:
-            _log.warning("Preloading filter-dependent calibs is not supported for visits "
-                         "without a specific filter.")
-            types = {t for t in types
-                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
-        type_names = {t.name for t in types}
-        # For now, filter down to the dataset types that exist in the specific calib collection.
-        # TODO: A new query API after DM-45873 may replace or improve this usage.
-        # TODO: DM-40245 to identify the datasets.
-        collections_info = self.central_butler.collections.query_info(
-            self.instrument.makeCalibrationCollectionName(), include_summary=True)
-        type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
+        type_names = self._get_calib_types()
+
+        def query_calibs_by_date(butler, label):
+            with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
+                    butler.query() as query:
+                expr = query.expression_factory
+                query = query.where(data_id)
+                datasets = set()
+                for dataset_type in type_names:
+                    try:
+                        datasets |= set(
+                            query.datasets(dataset_type,
+                                           self.instrument.makeCalibrationCollectionName(),
+                                           find_first=True)
+                            # where needs to come after datasets to pick up the type
+                            .where(expr[dataset_type].timespan.overlaps(calib_date))
+                            .with_dimension_records()
+                        )
+                    except (DataIdValueError, MissingDatasetTypeError) as e:
+                        # Dimensions/dataset type often invalid for fresh local repo,
+                        # where there are no, and never have been, any matching datasets.
+                        # It *is* a problem for the central repo, but can be caught later.
+                        _log.debug("%s query failed with %s.", label, e)
+                # Trace3 because, in many contexts, datasets is too large to print.
+                _log_trace3.debug("%s: %s", label, datasets)
+                return datasets
+
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            type_names,
-            collections=self.instrument.makeCalibrationCollectionName(),
-            data_id=data_id,
-            find_first=True,
-            calib_date=calib_date,
+            query_calibs_by_date,
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
@@ -819,9 +855,10 @@ class MiddlewareInterface:
         try:
             models = set(_filter_datasets(
                 self.central_butler, self.butler,
-                ["pretrainedModelPackage"],
-                collections=self._collection_ml_model,
-                find_first=True,
+                _generic_query(["pretrainedModelPackage"],
+                               collections=self._collection_ml_model,
+                               find_first=True,
+                               ),
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
@@ -853,12 +890,6 @@ class MiddlewareInterface:
             _check_transfer_completion(datasets, transferred, "Downloaded")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
-            # VALIDITY-HACK: ensure local <instrument>/calibs is a
-            # chain even if central collection isn't.
-            self.butler.registry.registerCollection(
-                self.instrument.makeCalibrationCollectionName(),
-                CollectionType.CHAINED,
-            )
             self._export_collections(self._collection_template)
             self._export_collections(self.instrument.makeUmbrellaCollectionName())
 
@@ -872,10 +903,6 @@ class MiddlewareInterface:
             self.instrument.makeUmbrellaCollectionName(),
             [self._collection_template,
              self.instrument.makeDefaultRawIngestRunName(),
-             # VALIDITY-HACK: account for case where source
-             # collection was CALIBRATION or omitted from
-             # umbrella.
-             self.instrument.makeCalibrationCollectionName(),
              ])
 
     def _export_collections(self, collection):
@@ -895,44 +922,14 @@ class MiddlewareInterface:
 
         # Store collection chains after all children guaranteed to exist
         chains = {}
-        removed = set()
         for child in src.queryCollections(collection, flattenChains=True, includeChains=True):
-            # VALIDITY-HACK: do not transfer calibration collections; we'll make our own
-            if src.getCollectionType(child) == CollectionType.CALIBRATION:
-                removed.add(child)
-                continue
             if src.getCollectionType(child) == CollectionType.CHAINED:
                 chains[child] = src.getCollectionChain(child)
             dest.registerCollection(child,
                                     src.getCollectionType(child),
                                     src.getCollectionDocumentation(child))
         for chain, children in chains.items():
-            # VALIDITY-HACK: fix up chains after removing calibration
-            # collections and including local-only collections.
-            present = list(dest.getCollectionChain(chain)) + list(children)
-            for missing in removed:
-                while missing in present:
-                    present.remove(missing)
-            dest.setCollectionChain(chain, present)
-
-    # VALIDITY-HACK: used only for local "latest calibs" collection
-    def _get_local_calib_collection(self, parent):
-        """Generate a name for a local-only calib collection to store mock
-        associations.
-
-        Parameters
-        ----------
-        parent : `str`
-            The chain that serves as the calib interface for the rest of
-            this class.
-
-        Returns
-        -------
-        calib_collection : `str`
-            The calibration collection name to use. This method does *not*
-            create the collection itself.
-        """
-        return f"{parent}/{self._day_obs}"
+            dest.setCollectionChain(chain, children)
 
     def _export_calib_associations(self, calib_collection, datasets):
         """Export the associations between a set of datasets and a
@@ -949,19 +946,24 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
-        # VALIDITY-HACK: (re)define a calibration collection containing the
-        # latest calibs as of today. Already-cached calibs are still available
-        # from previous collections.
-        if datasets:
-            calib_latest = self._get_local_calib_collection(calib_collection)
-            new = self.butler.registry.registerCollection(calib_latest, CollectionType.CALIBRATION)
-            if new:
-                self.butler.collections.prepend_chain(calib_collection, [calib_latest])
-
-            # VALIDITY-HACK: real associations are expensive to query. Just apply
-            # arbitrary ones and assume that the first collection in the chain is
-            # always the best.
-            self.butler.registry.certify(calib_latest, datasets, Timespan(None, None))
+        collections = self.central_butler.collections
+        with self.central_butler.query() as query:
+            for dataset in datasets:
+                dtype = dataset.datasetType
+                result = query.where(dataset.dataId) \
+                    .join_dataset_search(dtype, calib_collection) \
+                    .general(dtype.dimensions,
+                             dataset_fields={dtype.name: {"dataset_id", "run", "collection", "timespan"}},
+                             find_first=False,  # Required for timespan queries.
+                             )
+                # Associations include run membership, and possibly multiple calibration collections.
+                for association in lsst.daf.butler.DatasetAssociation.from_query_result(result, dtype):
+                    if collections.get_info(association.collection).type == CollectionType.CALIBRATION \
+                            and association.ref == dataset:
+                        # certify is designed to work on groups of datasets; in practice,
+                        # the total number of calibs (~1 of each type) is small enough that
+                        # grouping by timespan isn't worth it.
+                        self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_type(refs):
@@ -1265,7 +1267,7 @@ class MiddlewareInterface:
             collections in ``self.butler``.
         data_ids : `str`
             A query string, in the format of the ``where`` parameter to
-            `lsst.daf.butler.Registry.queryDataIds`, specifying the data IDs
+            `lsst.daf.butler.query_data_ids`, specifying the data IDs
             over which to run the pipelines.
         label : `str`
             A unique name to disambiguate this pipeline run for logging
@@ -1400,9 +1402,9 @@ class MiddlewareInterface:
         changes : `bool`
             `True` if changes have been made, `False` if retries are safe.
         """
-        data_ids = set(self.butler.registry.queryDataIds(["instrument", "visit", "detector"], where=where))
+        data_ids = self.butler.query_data_ids(["instrument", "visit", "detector"], where=where, explain=False)
         if len(data_ids) == 1:
-            data_id = data_ids.pop()
+            data_id = data_ids[0]
             apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
             return apdb.containsVisitDetector(data_id["visit"], self.visit.detector)
         elif not data_ids:
@@ -1596,19 +1598,22 @@ class MiddlewareInterface:
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
             try:
-                # Need to iterate over datasets at least twice, so make a collection.
-                datasets = set(self.butler.registry.queryDatasets(
-                    dataset_types,
-                    collections=in_collections,
-                    # in_collections may include other runs, so need to filter.
-                    # Since AP processing is strictly visit-detector, these three
-                    # dimensions should suffice.
-                    # DO NOT assume that visit == exposure!
-                    where="exposure in (exposure_ids)",
-                    bind={"exposure_ids": exposure_ids},
-                    instrument=self.instrument.getName(),
-                    detector=self.visit.detector,
-                ).expanded())
+                datasets = set()
+                for dataset_type in dataset_types:
+                    datasets |= set(self.butler.query_datasets(
+                        dataset_type,
+                        collections=in_collections,
+                        # in_collections may include other runs, so need to filter.
+                        # Since AP processing is strictly visit-detector, these three
+                        # dimensions should suffice.
+                        # DO NOT assume that visit == exposure!
+                        where="exposure in (exposure_ids)",
+                        bind={"exposure_ids": exposure_ids},
+                        with_dimension_records=True,
+                        explain=False,  # Failed runs might not have datasets of every type.
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                    ))
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
 
@@ -1655,7 +1660,7 @@ class MiddlewareInterface:
         **kwargs
             Any data ID parameters to select specific records. They have the
             same meanings as the parameters of
-            `lsst.daf.butler.Registry.queryDimensionRecords`.
+            `lsst.daf.butler.Butler.query_dimension_records`.
         """
         core_dimensions = ["group",
                            "day_obs",
@@ -1672,7 +1677,7 @@ class MiddlewareInterface:
         sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
 
         for dimension in sorted_dimensions:
-            records = src_butler.registry.queryDimensionRecords(dimension, **kwargs)
+            records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
             # If records don't match, this is not an error, and central takes precedence.
             dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
@@ -1727,18 +1732,20 @@ class MiddlewareInterface:
         matching_types = {dtype for dtype in butler.registry.queryDatasetTypes(...)
                           if dtype.storageClass_name == storage_class}
         _log.debug("Found dataset types matching %s: %s", storage_class, {t.name for t in matching_types})
-        yield from butler.registry.queryDatasets(
-            matching_types,
-            collections=collections,
-            findFirst=True,
-            # collections may include other runs, so need to filter.
-            # Since AP processing is strictly visit-detector, these three
-            # dimensions should suffice.
-            # DO NOT assume that visit == exposure!
-            where="exposure in (exposure_ids)",
-            bind={"exposure_ids": exposure_ids},
-            instrument=self.instrument.getName(),
-            detector=self.visit.detector,
+        yield from itertools.chain(
+            butler.query_datasets(t,
+                                  collections=collections,
+                                  find_first=True,
+                                  # collections may include other runs, so need to filter.
+                                  # Since AP processing is strictly visit-detector, these three
+                                  # dimensions should suffice.
+                                  # DO NOT assume that visit == exposure!
+                                  where="exposure in (exposure_ids)",
+                                  bind={"exposure_ids": exposure_ids},
+                                  explain=False,
+                                  instrument=self.instrument.getName(),
+                                  detector=self.visit.detector,
+                                  ) for t in matching_types
         )
 
     def _get_template_types(self) -> collections.abc.Set[str]:
@@ -1774,10 +1781,11 @@ class MiddlewareInterface:
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
             if exposure_ids:
-                raws = self.butler.registry.queryDatasets(
+                raws = self.butler.query_datasets(
                     'raw',
                     collections=self.instrument.makeDefaultRawIngestRunName(),
                     where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                    explain=False,  # Raws might not have been ingested.
                     instrument=self.visit.instrument,
                     detector=self.visit.detector,
                 )
@@ -1788,28 +1796,13 @@ class MiddlewareInterface:
             for pipeline_file in self._get_all_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
                 _remove_run_completely(self.butler, output_run)
-            # VALIDITY-HACK: remove cached calibs to avoid future conflicts
-            if not cache_calibs:
-                calib_chain = self.instrument.makeCalibrationCollectionName()
-                calib_refs = self.butler.registry.queryDatasets(
-                    ...,
-                    collections=calib_chain)
-                calib_taggeds = self.butler.registry.queryCollections(
-                    calib_chain,
-                    flattenChains=True,
-                    collectionTypes={CollectionType.CALIBRATION, CollectionType.TAGGED})
-                calib_runs = self.butler.registry.queryCollections(
-                    calib_chain,
-                    flattenChains=True,
-                    collectionTypes=CollectionType.RUN)
-                self.butler.collections.redefine_chain(calib_chain, [])
-                self.butler.pruneDatasets(calib_refs, disassociate=True, unstore=True, purge=True)
-                for member in calib_taggeds:
-                    self.butler.registry.removeCollection(member)
-                self.butler.removeRuns(calib_runs, unstore=True)
 
             # Clean out calibs, templates, and other preloaded datasets
-            excess_datasets = frozenset(self.butler.registry.queryDatasets(...)) - frozenset(self.cache)
+            excess_datasets = set()
+            for dataset_type in self.butler.registry.queryDatasetTypes(...):
+                excess_datasets |= set(self.butler.query_datasets(
+                    dataset_type, collections="*", find_first=False, explain=False))
+            excess_datasets -= frozenset(self.cache)
             if excess_datasets:
                 _log_trace.debug("Clearing out %s.", excess_datasets)
                 self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
@@ -1828,21 +1821,20 @@ class _NoPositionError(RuntimeError):
     """
 
 
-# TODO: refactor this function so that querying the src repo (with timestamp),
-# querying the dest repo (without timestamp), and differencing the two are
-# properly separated.
+_DatasetResults = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
+"""Type alias for dataset query results, to simplify annotations."""
+
+
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
-                     dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
-                     *args,
-                     calib_date: astropy.time.Time | None = None,
+                     query: collections.abc.Callable[[Butler, str], _DatasetResults],
                      all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
                                                    typing.Any] | None = None,
-                     **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
+                     ) -> _DatasetResults:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
 
-    This method raises if nothing in the source repository matches the query criteria.
+    This function raises if nothing in the source repository matches the query criteria.
 
     Parameters
     ----------
@@ -1850,127 +1842,91 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
-    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
-        Iterable of dataset type object or name to search for.
-    calib_date : `astropy.time.Time`, optional
-        If provided, also filter anything other than calibs valid at
-        ``calib_date`` and check that at least one valid calib was found.
+    query : callable
+        A callable that takes a `~lsst.daf.butler.Butler` and a logging label
+        and returns matching datasets. The query must be valid for both
+        ``src_repo`` and ``dest_repo``.
     all_callback: callable, optional
         If provided, a callable that is called with *all* datasets picked up by
         the query, before filtering out those already present in ``dest_repo``.
         This callable is not called if the query returns no results.
-    *args, **kwargs
-        Parameters for describing the dataset query. They have the same
-        meanings as the parameters of `lsst.daf.butler.query_datasets`
-        The query must be valid for both ``src_repo`` and ``dest_repo``.
 
     Returns
     -------
     datasets : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets that exist in ``src_repo`` but not ``dest_repo``. All
-        datasetRefs are fully expanded.
+        The datasets that exist in ``src_repo`` but not ``dest_repo``.
+        datasetRefs are guaranteed to be fully expanded if any only if
+        ``query`` guarantees it.
 
     Raises
     ------
     _MissingDatasetError
-        Raised if the query on ``src_repo`` failed to find any datasets, or
-        (if ``calib_date`` is set) if none of them are currently valid.
+        Raised if the query on ``src_repo`` failed to find any datasets.
+    """
+    known_datasets = query(dest_repo, "known datasets")
+
+    # Let exceptions from src_repo query raise: if it fails, that invalidates
+    # this operation.
+    src_datasets = set(query(src_repo, "source datasets"))
+    if not src_datasets:
+        # The downstream method decides what to do with empty results.
+        # DM-40245 and DM-46178 may change this.
+        raise _MissingDatasetError("Source repo query found no matches.")
+    if all_callback:
+        all_callback(src_datasets)
+    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
+
+
+def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
+                   *args,
+                   **kwargs) -> collections.abc.Callable[[Butler, str], _DatasetResults]:
+    """Generate a parameterized Butler dataset query.
+
+    Parameters
+    ----------
+    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
+        Iterable of dataset type object or name to search for.
+    *args, **kwargs
+        Parameters for describing the dataset query. They have the same
+        meanings as the parameters of `lsst.daf.butler.query_datasets`.
+
+    Returns
+    -------
+    query : callable
+        A callable that takes a `~lsst.daf.butler.Butler` and an optional
+        logging label and executes the dataset query, returning an iterable of
+        fully expanded `~lsst.daf.butler.DatasetRef`.
     """
     formatted_args = "dataset_types={}, {}, {}".format(
         dataset_types,
         ", ".join(repr(a) for a in args),
         ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
     )
-    # time_this automatically escalates its log to ERROR level if the code raises.
-    # Some errors are expected to happen sometimes, and we don't want those to log
-    # at the ERROR level and cause confusion.
-    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
-                                    level=logging.DEBUG):
-        known_datasets = set()
-        for dataset_type in dataset_types:
-            try:
-                # Okay to have empty results.
-                known_datasets |= set(dest_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
-            except (DataIdValueError, MissingDatasetTypeError) as e:
-                # If dimensions are invalid or dataset type never registered locally,
-                # then *any* such datasets are missing.
-                _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
-        _log_trace.debug("Known datasets: %s", known_datasets)
 
-    # Let exceptions from src_repo query raise: if it fails, that invalidates
-    # this operation.
-    # "expanded" dimension records are ignored for DataCoordinate equality
-    # comparison, so we only need them on src_datasets.
-    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
-                                    level=logging.DEBUG):
-        src_datasets = set()
-        for dataset_type in dataset_types:
-            # explain=False because empty query result is ok here and we don't need it to raise an error.
-            src_datasets |= set(src_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
-        # In many contexts, src_datasets is too large to print.
-        _log_trace3.debug("Source datasets: %s", src_datasets)
-    if calib_date:
-        src_datasets = set(_filter_calibs_by_date(
-            src_repo,
-            kwargs["collections"] if "collections" in kwargs else ...,
-            src_datasets,
-            calib_date,
-        ))
-        _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
-    if not src_datasets:
-        # The downstream method decides what to do with empty results.
-        # DM-40245 and DM-46178 may change this.
-        raise _MissingDatasetError(
-            "Source repo query with args '{}' found no matches.".format(formatted_args))
-    if all_callback:
-        all_callback(src_datasets)
-    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
+    def query(butler: Butler, butler_name: str = ""):
+        # time_this automatically escalates its log to ERROR level if the code raises.
+        # Some errors are expected to happen sometimes, and we don't want those to log
+        # at the ERROR level and cause confusion.
+        label = butler_name or str(butler)
+        with lsst.utils.timer.time_this(_log, msg=f"_generic_query({formatted_args}) ({label})",
+                                        level=logging.DEBUG):
+            datasets = set()
+            for dataset_type in dataset_types:
+                try:
+                    datasets |= set(butler.query_datasets(
+                        # explain=False because empty query result is ok here.
+                        dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                    ))
+                except (DataIdValueError, MissingDatasetTypeError) as e:
+                    # Dimensions/dataset type often invalid for fresh local repo,
+                    # where there are no, and never have been, any matching datasets.
+                    # It *is* a problem for the central repo, but can be caught later.
+                    _log.debug("%s query failed with %s.", label, e)
+            # Trace3 because, in many contexts, datasets is too large to print.
+            _log_trace3.debug("%s: %s", label, datasets)
+            return datasets
 
-
-def _filter_calibs_by_date(butler: Butler,
-                           collections: typing.Any,
-                           unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
-                           date: astropy.time.Time
-                           ) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
-    """Trim a set of calib datasets to those that are valid at a particular time.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The Butler to query for validity data.
-    collections : collection expression
-        The calibration collection(s), or chain(s) containing calibration
-        collections, to query for validity data.
-    unfiltered_calibs : collection [`lsst.daf.butler.DatasetRef`]
-        The calibs to be filtered by validity. May be empty.
-    date : `astropy.time.Time`
-        The time at which the calibs must be valid.
-
-    Returns
-    -------
-    filtered_calibs : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets in ``unfiltered_calibs`` that are valid on ``date``. Not
-        guaranteed to be the same `~lsst.daf.butler.DatasetRef` objects passesd
-        to ``unfiltered_calibs``, but guaranteed to be fully expanded.
-    """
-    with lsst.utils.timer.time_this(_log, msg="filter_calibs", level=logging.DEBUG):
-        # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
-        # Minimize redundant queries to find_dataset.
-        unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
-        t = Timespan.fromInstant(date)
-        _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
-        filtered_calibs = []
-        for dataset_type, data_id in unique_ids:
-            # Use find_dataset to simultaneously filter by validity and chain order
-            found_ref = butler.find_dataset(dataset_type,
-                                            data_id,
-                                            collections=collections,
-                                            timespan=t,
-                                            dimension_records=True,
-                                            )
-            if found_ref:
-                filtered_calibs.append(found_ref)
-        return filtered_calibs
+    return query
 
 
 def _get_refcat_types(butler):
