@@ -369,7 +369,7 @@ The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
 Credentials must be renewed if you get a "cannot fetch token: 400 Bad Request" error when running ``kubectl``.
 
-The service container deployment is managed using `Argo CD and Phalanx <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev/argo-cd>`_.
+The service container deployment is managed using `Argo CD and Phalanx <https://usdfdev-prompt-processing.slac.stanford.edu/argo-cd>`_.
 See the `Phalanx`_ docs for information on working with Phalanx in general (including special developer environment setup).
 
 There are two different ways to deploy a development release of the service:
