@@ -38,7 +38,6 @@ import requests
 from astropy.io import fits
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
-from lsst.obs.lsst.translators import LsstCamImSimTranslator
 
 from activator.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
 
@@ -67,6 +66,7 @@ SCHEMA_ID = 99
 
 max_exposure = {
     "HSC": 21474800,
+    "LSSTCam-imSim": 9999999,
 }
 """A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
 
@@ -280,9 +280,24 @@ def make_imsim_id(group_id, snap):
         An exposure ID in the format expected by Gen 3 Middleware.
     headers : `dict`
         The key-value pairs are in the form to appear in LSST headers.
+
+    Notes
+    -----
+    The current implementation gives 7-digit exposure IDs without considering
+    the year; that is, duplicate IDs can be generated from a different year.
     """
     day_obs, seq_num = decode_group(group_id)
-    exposure_num = LsstCamImSimTranslator.compute_exposure_id(day_obs, seq_num)
+    night_id = datetime.datetime.strptime(str(day_obs), "%Y%m%d").strftime("%j")
+    if seq_num > 9999:
+        raise RuntimeError(f"{group_id} translated to seq_num {seq_num}, "
+                           f"too large for the current implementation.")
+    exposure_num = int(f"{night_id:03}{seq_num:04}")
+    # Offset so the fake exposure numbers are always larger than any exposure
+    # of the 2.2i/raw/OR5* collection.
+    exposure_num += 2000000
+    if exposure_num > max_exposure["LSSTCam-imSim"]:
+        raise RuntimeError(f"{group_id} translated to expId {exposure_num}, "
+                           f"max allowed is { max_exposure['LSSTCam-imSim']}.")
     return exposure_num, {
         "OBSID": exposure_num,
         # These headers do not exist in original imsim files, but are added for
