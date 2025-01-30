@@ -1,0 +1,16 @@
+description: Alert Production pipeline specialized for LSSTCam-imSim
+
+# This file should strive to contain just an import from ap_pipe.
+# Exceptions are allowed temporarily when urgent bug fixes and
+# prompt_processing build can't wait for the lsst_distrib
+# release schedule.
+imports:
+  - location: $AP_PIPE_DIR/pipelines/LSSTCam-imSim/ApPipe.yaml
+    include:
+      - prompt
+tasks:
+  diaPipe:
+    class: lsst.ap.association.DiaPipelineTask
+    config:
+      # Alert distribution only runnable in PP environment.
+      alertPackager.doProduceAlerts: True
