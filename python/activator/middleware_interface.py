@@ -1081,12 +1081,12 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(
             self._get_preload_run(self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_all_pipeline_files():
+        for pipeline_file in self._get_combined_pipeline_files():
             self.butler.registry.registerCollection(
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_all_pipeline_files(self) -> collections.abc.Collection[str]:
+    def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
@@ -1490,7 +1490,7 @@ class MiddlewareInterface:
 
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [self._get_preload_run(self._day_obs)]
-        for f in self._get_all_pipeline_files():
+        for f in self._get_combined_pipeline_files():
             output_runs.append(self._get_output_run(f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
@@ -1764,7 +1764,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = self._get_preload_run(self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_all_pipeline_files():
+            for pipeline_file in self._get_combined_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
                 _remove_run_completely(self.butler, output_run)
 
