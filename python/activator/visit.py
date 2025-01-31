@@ -155,6 +155,43 @@ class FannedOutVisit(BareVisit):
         return f"(groupId={self.groupId}, survey={self.survey}, " \
                f"detector={self.detector})"
 
+    def from_dict_to_fanned_out_visit(self, fan_out_visit_dict: dict):
+        """Converts dict to fanned out visit.
+
+        Parameters
+        ----------
+        fan_out_visit_dict : `dict`
+        Fan out visit with string values.
+
+        Returns
+        -------
+        expected_visit : `FannedOutVisit`
+            FannedOutVisit with values converted to correct type.
+        """
+
+        fan_out_visit_dict = asdict(self)
+
+        # Set type as elements from Redis Streams are strings.
+        fan_out_visit_dict["salIndex"] = int(fan_out_visit_dict["salIndex"])
+        fan_out_visit_dict["scriptSalIndex"] = int(fan_out_visit_dict["scriptSalIndex"])
+        fan_out_visit_dict["startTime"] = float(fan_out_visit_dict["startTime"])
+        fan_out_visit_dict["cameraAngle"] = float(fan_out_visit_dict["cameraAngle"])
+        fan_out_visit_dict["coordinateSystem"] = int(fan_out_visit_dict["coordinateSystem"])
+        fan_out_visit_dict["dome"] = int(fan_out_visit_dict["dome"])
+        fan_out_visit_dict["duration"] = float(fan_out_visit_dict["duration"])
+        fan_out_visit_dict["nimages"] = int(fan_out_visit_dict["nimages"])
+        fan_out_visit_dict["rotationSystem"] = int(fan_out_visit_dict["rotationSystem"])
+        fan_out_visit_dict["totalCheckpoints"] = float(fan_out_visit_dict["totalCheckpoints"])
+        fan_out_visit_dict["detector"] = int(fan_out_visit_dict["detector"])
+        # Convert position string to list
+        position_string_list = (
+            fan_out_visit_dict["position"].replace("[", "").replace("]", "").split(",")
+        )
+        fan_out_visit_dict["position"] = [float(i) for i in position_string_list]
+
+        expected_visit = FannedOutVisit(**fan_out_visit_dict)
+        return expected_visit
+
     def get_bare_visit(self):
         """Return visit-level info as a dict"""
         info = asdict(self)
