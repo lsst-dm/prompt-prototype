@@ -1,6 +1,19 @@
 description: ISR-only pipeline specialized for LSSTCam
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/_ingredients/ApPipe.yaml
     include:
       - isr
+
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTask
+    config:
+      doBrighterFatter: false
+      # turn off things we don't correct while LSSTCam is in the cleanroom
+      doBias: false
+      doLinearize: false
+      doCrosstalk: false
+      doDefect: false
+      doDark: false
+      doFlat: false
