@@ -104,11 +104,15 @@ def get_last_group(bucket, instrument, date):
     YMD string, followed by a four-digit counter, with the combination
     guaranteed to be a valid HSC exposure ID.
     """
+
     if instrument in _LSST_CAMERA_LIST:
         blobs = bucket.objects.filter(
             Prefix=f"{instrument}/{date}/",
         )
-        numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
+        if instrument == "LSSTCam-imSim":
+            numbers = [int(blob.key.split("/")[2][-6:]) for blob in blobs]
+        else:
+            numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
         if numbers:
             last_number = max(numbers)
         else:

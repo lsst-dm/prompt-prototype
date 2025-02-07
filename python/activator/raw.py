@@ -394,6 +394,16 @@ def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
             f"-{exposure_id}-{filter}-{detector}.fz"
         )
 
+    # imSim raw data do not follow LSST convention and use OBSID differently.
+    # For PP testing, we make up a file path convention, with the assumption
+    # of group_id in the format YYYY-MM-DDTHH:MM:SS.ffffff like LSST.
+    if instrument == "LSSTCam-imSim":
+        day_obs = group[:10].replace("-", "")
+        return (
+            f"{instrument}/{day_obs}/{exposure_id}/"
+            f"{exposure_id}_{filter}_{detector}.fits"
+        )
+
     day_obs, seq_num, controller = LsstBaseTranslator.unpack_exposure_id(exposure_id)
     abbrev = _CAMERA_ABBREV[instrument]
     raft_sensor = _DETECTOR_FROM_INT[instrument][detector]
