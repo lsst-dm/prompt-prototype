@@ -834,6 +834,7 @@ class MiddlewareInterface:
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
             self._export_collections(self._collection_template)
             self._export_collections(self.instrument.makeUmbrellaCollectionName())
+            self._export_collections(self.instrument.makeCalibrationCollectionName())
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)", level=logging.DEBUG):
             self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calibs)
