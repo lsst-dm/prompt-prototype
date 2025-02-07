@@ -108,7 +108,10 @@ def get_last_group(bucket, instrument, date):
         blobs = bucket.objects.filter(
             Prefix=f"{instrument}/{date}/",
         )
-        numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
+        if instrument == "LSSTCam-imSim":
+            numbers = [int(blob.key.split("/")[2][-4:]) for blob in blobs]
+        else:
+            numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
         if numbers:
             last_number = max(numbers)
         else:

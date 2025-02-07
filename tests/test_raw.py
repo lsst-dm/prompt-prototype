@@ -34,6 +34,7 @@ from shared.raw import (
     get_exp_id_from_oid,
     get_group_id_from_oid,
     LSST_REGEXP,
+    IMSIM_REGEXP,
     OTHER_REGEXP,
     get_raw_path,
 )
@@ -261,6 +262,35 @@ class LsstCamTest(LsstBase, unittest.TestCase):
             path,
             "LSSTCam/20220321/MC_O_20220321_000004/MC_O_20220321_000004_R11_S20.fits"
         )
+
+
+class LsstCamImSimTest(LsstBase, unittest.TestCase):
+    def setUp(self):
+        self.instrument = "LSSTCam-imSim"
+        self.group = "2022-03-21T00:00:00.000088"
+        self.exposure = 2080088
+        self.detector = 42
+        self.snap = 1
+        super().setUp()
+
+    def test_get_raw_path(self):
+        path = get_raw_path(self.instrument, self.detector, self.group,
+                            self.snap, self.exposure, self.filter)
+        self.assertEqual(
+            path,
+            "LSSTCam-imSim/20220321/2080088/2080088_k2022_42.fits"
+        )
+
+    def test_writeread(self):
+        """Test that raw module can parse the paths it creates.
+        """
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        parsed = re.match(IMSIM_REGEXP, path)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['instrument'], str(self.instrument))
+        self.assertEqual(parsed['expid'], str(self.exposure))
+        self.assertEqual(parsed['detector'], str(self.detector))
+        self.assertEqual(get_exp_id_from_oid(path), self.exposure)
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
