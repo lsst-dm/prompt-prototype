@@ -6,6 +6,7 @@ ENV PROMPT_PROCESSING_DIR=$APP_HOME
 ARG PORT
 WORKDIR $APP_HOME
 COPY python/activator activator/
+COPY python/shared shared/
 COPY pipelines pipelines/
 COPY config/gunicorn.conf.py ./
 COPY maps maps/

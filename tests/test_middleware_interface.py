@@ -52,12 +52,12 @@ import lsst.resources
 import lsst.sphgeom
 
 from activator.caching import DatasetCache
-from activator.config import PipelinesConfig
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
-from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
+from shared.config import PipelinesConfig
+from shared.visit import FannedOutVisit
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"

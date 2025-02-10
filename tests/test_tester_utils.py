@@ -27,7 +27,7 @@ import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
 import lsst.resources.s3utils
 
-from activator.raw import get_raw_path
+from shared.raw import get_raw_path
 from tester.utils import (
     get_last_group,
     make_exposure_id,

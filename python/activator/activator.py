@@ -42,19 +42,19 @@ import flask
 import prometheus_client as prometheus
 import redis
 
-from .config import PipelinesConfig
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
-    NonRetriableError, RetriableError
-from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, \
-    make_local_repo, make_local_cache, MiddlewareInterface
-from .raw import (
+from shared.config import PipelinesConfig
+from shared.logger import setup_usdf_logger
+from shared.raw import (
     check_for_snap,
     is_path_consistent,
     get_group_id_from_oid,
 )
+from shared.visit import FannedOutVisit
+from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
+    NonRetriableError, RetriableError
+from .middleware_interface import get_central_butler, \
+    make_local_repo, make_local_cache, MiddlewareInterface
 from .repo_tracker import LocalRepoTracker
-from .visit import FannedOutVisit
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"].lower()

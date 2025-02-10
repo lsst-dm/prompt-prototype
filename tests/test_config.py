@@ -26,8 +26,8 @@ import unittest
 
 from lsst.utils import getPackageDir
 
-from activator.config import PipelinesConfig
-from activator.visit import FannedOutVisit
+from shared.config import PipelinesConfig
+from shared.visit import FannedOutVisit
 
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))

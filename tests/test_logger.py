@@ -29,8 +29,7 @@ import unittest
 
 import pytest
 
-from activator.logger import UsdfJsonFormatter, \
-    _parse_log_levels, RecordFactoryContextAdapter
+from shared.logger import UsdfJsonFormatter, _parse_log_levels, RecordFactoryContextAdapter
 
 
 class ParseLogLevelsTest(unittest.TestCase):

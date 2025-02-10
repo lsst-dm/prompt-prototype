@@ -51,11 +51,11 @@ import lsst.pipe.base
 import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
+from shared.config import PipelinesConfig
+from shared.visit import FannedOutVisit
 from .caching import DatasetCache
-from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError, \
     InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError
-from .visit import FannedOutVisit
 from .timer import enforce_schema, time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)

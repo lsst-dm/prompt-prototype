@@ -26,7 +26,7 @@ import unittest
 import astropy.coordinates
 import astropy.units as u
 
-from activator.visit import FannedOutVisit, BareVisit
+from shared.visit import FannedOutVisit, BareVisit
 
 
 class FannedOutVisitTest(unittest.TestCase):

@@ -27,7 +27,7 @@ import warnings
 
 from lsst.resources import ResourcePath, s3utils
 
-from activator.raw import (
+from shared.raw import (
     check_for_snap,
     is_path_consistent,
     get_prefix_from_snap,
@@ -37,7 +37,7 @@ from activator.raw import (
     OTHER_REGEXP,
     get_raw_path,
 )
-from activator.visit import FannedOutVisit
+from shared.visit import FannedOutVisit
 
 try:
     import boto3

@@ -28,7 +28,7 @@ import astropy
 import healpy
 import numpy
 
-from activator.maps import PredicateMapHealpix
+from shared.maps import PredicateMapHealpix
 
 
 TESTDIR = os.path.abspath(os.path.dirname(__file__))

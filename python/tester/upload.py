@@ -35,15 +35,15 @@ from botocore.handlers import validate_bucket_name
 
 from lsst.resources import ResourcePath
 
-from activator.raw import (
+from shared.raw import (
     LSST_REGEXP,
     OTHER_REGEXP,
     get_raw_path,
     _LSST_CAMERA_LIST,
     _DETECTOR_FROM_RS,
 )
-from activator.visit import FannedOutVisit, SummitVisit
-from tester.utils import (
+from shared.visit import FannedOutVisit, SummitVisit
+from .utils import (
     INSTRUMENTS,
     get_last_group,
     increment_group,

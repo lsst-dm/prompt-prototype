@@ -39,7 +39,7 @@ from astropy.io import fits
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
-from activator.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
+from shared.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)

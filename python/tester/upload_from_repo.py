@@ -35,9 +35,9 @@ from botocore.handlers import validate_bucket_name
 from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
-from activator.raw import get_raw_path, _LSST_CAMERA_LIST
-from activator.visit import SummitVisit
-from tester.utils import (
+from shared.raw import get_raw_path, _LSST_CAMERA_LIST
+from shared.visit import SummitVisit
+from .utils import (
     INSTRUMENTS,
     get_last_group,
     increment_group,
