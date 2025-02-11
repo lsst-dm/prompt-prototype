@@ -294,6 +294,12 @@ def get_samples_lsst(bucket, instrument):
         with sidecar.open("r") as f:
             md = json.load(f)
 
+        sal_index = INSTRUMENTS[instrument].sal_index
+        # Use only a subset of detectors for imSim.
+        if instrument == "LSSTCam-imSim":
+            # For imSim data, the OBSID header has the exposure ID.
+            sal_index = int(md["OBSID"])
+
         visit = FannedOutVisit(
             instrument=instrument,
             detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
@@ -307,7 +313,7 @@ def get_samples_lsst(bucket, instrument):
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=md["ROTPA"],
             survey="SURVEY",
-            salIndex=INSTRUMENTS[instrument].sal_index,
+            salIndex=sal_index,
             scriptSalIndex=2,
             dome=FannedOutVisit.Dome.OPEN,
             duration=duration,
