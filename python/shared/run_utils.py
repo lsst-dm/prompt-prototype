@@ -141,8 +141,11 @@ def _get_pp_hash():
     files.extend(sorted(glob.glob(os.path.join(root_dir, "maps", "**", "*.fits"), recursive=True)))
     files.extend(sorted(glob.glob(os.path.join(root_dir, "pipelines", "**", "*.yaml"), recursive=True)))
     # Source code has different paths in test environment and Docker container.
+    # Use the same order for both, or the hash will be environment-dependent!
     files.extend(sorted(glob.glob(os.path.join(root_dir, "python", "activator", "*.py"), recursive=True)))
+    files.extend(sorted(glob.glob(os.path.join(root_dir, "python", "shared", "*.py"), recursive=True)))
     files.extend(sorted(glob.glob(os.path.join(root_dir, "activator", "*.py"), recursive=True)))
+    files.extend(sorted(glob.glob(os.path.join(root_dir, "shared", "*.py"), recursive=True)))
 
     filehash = hashlib.md5(usedforsecurity=False)
     for file in files:
