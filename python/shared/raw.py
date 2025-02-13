@@ -32,6 +32,7 @@ __all__ = [
     "get_exp_id_from_oid",
     "get_group_id_from_oid",
     "LSST_REGEXP",
+    "IMSIM_REGEXP",
     "OTHER_REGEXP",
     "get_raw_path",
 ]
@@ -45,7 +46,7 @@ import urllib.parse
 
 import requests
 
-from lsst.obs.lsst import LsstCam, LsstComCam, LsstComCamSim
+from lsst.obs.lsst import LsstCam, LsstCamImSim, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
@@ -61,6 +62,13 @@ LSST_REGEXP = re.compile(
     r"(?P=obs_id)_(?P<raft_sensor>R\d\d_S.\d)(?P<extension>\.f.*)$"
 )
 
+# Format for LSSTCam-imSim raws uploaded to image bucket:
+# instrument/day_obs/expid/expid_filter_detector.fits
+IMSIM_REGEXP = re.compile(
+    r"(?P<instrument>.*?)/(?P<day_obs>\d+)/(?P<expid>.*?)/"
+    r"(?P=expid)_(?P<filter>.*?)_(?P<detector>\d+)(?P<extension>\.f.*)$"
+)
+
 # Format for filenames of non-LSST camera raws uploaded to image bucket:
 # instrument/detector/group/snap/expid/filter/*.(fits, fz, fits.gz)
 OTHER_REGEXP = re.compile(
@@ -73,7 +81,16 @@ OTHER_REGEXP = re.compile(
 ################################
 
 # The list of camera names that might be used for LSST
-_LSST_CAMERA_LIST = ("LATISS", "ComCam", "LSSTComCam", "LSSTComCamSim", "LSSTCam", "TS8", "LSST-TS8")
+_LSST_CAMERA_LIST = (
+    "LATISS",
+    "ComCam",
+    "LSSTComCam",
+    "LSSTComCamSim",
+    "LSSTCam",
+    "TS8",
+    "LSST-TS8",
+    "LSSTCam-imSim",
+)
 
 # Translate from Camera path prefixes to official names.
 _TRANSLATE_INSTRUMENT = {
@@ -98,6 +115,7 @@ _CAMERA_ABBREV = {
 # Note that the getCamera() method may be replaced in the future.
 
 _LSSTCAM = LsstCam.getCamera().getNameMap()
+_LSSTCAMIMSIM = LsstCamImSim.getCamera().getNameMap()
 _LSSTCOMCAM = LsstComCam.getCamera().getNameMap()
 _LSSTCOMCAMSIM = LsstComCamSim.getCamera().getNameMap()
 
@@ -107,6 +125,7 @@ _DETECTOR_FROM_RS = {
     "LSSTComCamSim": {name: value.getId() for name, value in _LSSTCOMCAMSIM.items()},
     "LSST-TS8": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
     "LSSTCam": {name: value.getId() for name, value in _LSSTCAM.items()},
+    "LSSTCam-imSim": {name: value.getId() for name, value in _LSSTCAMIMSIM.items()},
 }
 
 # Build the reverse mapping.
@@ -146,6 +165,13 @@ def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
                 and m["group"] == visit.groupId
                 # nimages == 0 means there can be any number of snaps
                 and (int(m["snap"]) < visit.nimages or visit.nimages == 0)
+            )
+    elif instrument == "LSSTCam-imSim":
+        m = re.match(IMSIM_REGEXP, oid)
+        if m:
+            return (
+                m["instrument"] == visit.instrument
+                and int(m["detector"]) == visit.detector
             )
     else:
         instrument = _TRANSLATE_INSTRUMENT.get(instrument, instrument)
@@ -314,7 +340,10 @@ def get_exp_id_from_oid(oid: str) -> int:
         m = re.match(OTHER_REGEXP, oid)
         if m:
             return int(m["expid"])
-
+    elif instrument == "LSSTCam-imSim":
+        m = re.match(IMSIM_REGEXP, oid)
+        if m:
+            return int(m["expid"])
     else:
         instrument = _TRANSLATE_INSTRUMENT.get(instrument, instrument)
         m = re.match(LSST_REGEXP, oid)
@@ -350,9 +379,12 @@ def get_group_id_from_oid(oid: str) -> str:
             return m["group"]
         raise ValueError(f"{oid} could not be parsed into a group")
 
-    m = re.match(LSST_REGEXP, oid)
+    if instrument == "LSSTCam-imSim":
+        m = re.match(IMSIM_REGEXP, oid)
+    else:
+        m = re.match(LSST_REGEXP, oid)
     if not m:
-        raise ValueError(f"{oid} could not be parsed into a group")
+        raise ValueError(f"{oid} could not be parsed.")
     sidecar = ResourcePath("s3://" + os.environ["IMAGE_BUCKET"]).join(
         # Can't use updatedExtension because we may have something like .fits.fz
         oid.removesuffix(m["extension"])
@@ -380,6 +412,16 @@ def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
             f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{filter}"
             f"/{instrument}-{group}-{snap}"
             f"-{exposure_id}-{filter}-{detector}.fz"
+        )
+
+    # imSim raw data do not follow LSST convention and use OBSID differently.
+    # For PP testing, we make up a file path convention, with the assumption
+    # of group_id in the format YYYY-MM-DDTHH:MM:SS.ffffff like LSST.
+    if instrument == "LSSTCam-imSim":
+        day_obs = group[:10].replace("-", "")
+        return (
+            f"{instrument}/{day_obs}/{exposure_id}/"
+            f"{exposure_id}_{filter}_{detector}.fits"
         )
 
     day_obs, seq_num, controller = LsstBaseTranslator.unpack_exposure_id(exposure_id)

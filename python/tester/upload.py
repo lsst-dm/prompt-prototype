@@ -36,6 +36,7 @@ from botocore.handlers import validate_bucket_name
 from lsst.resources import ResourcePath
 
 from shared.raw import (
+    IMSIM_REGEXP,
     LSST_REGEXP,
     OTHER_REGEXP,
     get_raw_path,
@@ -277,7 +278,10 @@ def get_samples_lsst(bucket, instrument):
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
-        m = re.match(LSST_REGEXP, blob.key)
+        if instrument == "LSSTCam-imSim":
+            m = re.match(IMSIM_REGEXP, blob.key)
+        else:
+            m = re.match(LSST_REGEXP, blob.key)
         if not m or m["extension"] == ".json":
             continue
 
@@ -289,6 +293,12 @@ def get_samples_lsst(bucket, instrument):
             raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
         with sidecar.open("r") as f:
             md = json.load(f)
+
+        sal_index = INSTRUMENTS[instrument].sal_index
+        # Use only a subset of detectors for imSim.
+        if instrument == "LSSTCam-imSim":
+            # For imSim data, the OBSID header has the exposure ID.
+            sal_index = int(md["OBSID"])
 
         visit = FannedOutVisit(
             instrument=instrument,
@@ -303,7 +313,7 @@ def get_samples_lsst(bucket, instrument):
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=md["ROTPA"],
             survey="SURVEY",
-            salIndex=INSTRUMENTS[instrument].sal_index,
+            salIndex=sal_index,
             scriptSalIndex=2,
             dome=FannedOutVisit.Dome.OPEN,
             duration=duration,
