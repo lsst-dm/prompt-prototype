@@ -966,23 +966,23 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_all_pipeline_files():
+        for pipeline_file in self._get_combined_pipeline_files():
             self.butler.registry.registerCollection(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
+    def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
         Returns
         -------
-        pipeline : sequence [`str`]
-            A sequence of paths a configured pipeline file. The order
-            is undefined.
+        pipelines : collection [`str`]
+            The paths to a configured pipeline file. The order is undefined.
         """
-        all = list(self._get_pre_pipeline_files())
-        all.extend(self._get_main_pipeline_files())
+        # A pipeline appearing in both configs is unlikely, but not impossible.
+        all = set(self._get_pre_pipeline_files())
+        all.update(self._get_main_pipeline_files())
         return all
 
     def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
@@ -1376,7 +1376,7 @@ class MiddlewareInterface:
 
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
-        for f in self._get_all_pipeline_files():
+        for f in self._get_combined_pipeline_files():
             output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
@@ -1651,7 +1651,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_all_pipeline_files():
+            for pipeline_file in self._get_combined_pipeline_files():
                 output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
                                                  self._day_obs)
                 _remove_run_completely(self.butler, output_run)
