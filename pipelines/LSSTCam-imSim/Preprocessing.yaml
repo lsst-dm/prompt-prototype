@@ -1,0 +1,6 @@
+description: Preprocessing pipeline specialized for LSSTCam-imSim
+
+imports:
+  - location: $AP_PIPE_DIR/pipelines/LSSTCam-imSim/ApPipe.yaml
+    include:
+      - preload
